@@ -7,6 +7,7 @@ from bemani.backend.sdvx.gravitywars import SoundVoltexGravityWars
 from bemani.backend.sdvx.gravitywars_s1 import SoundVoltexGravityWarsSeason1
 from bemani.backend.sdvx.gravitywars_s2 import SoundVoltexGravityWarsSeason2
 from bemani.backend.sdvx.heavenlyhaven import SoundVoltexHeavenlyHaven
+from bemani.backend.sdvx.exceedgear import SoundVoltexExceedGear
 from bemani.common import Model, VersionConstants
 from bemani.data import Config, Data
 
@@ -41,6 +42,12 @@ class SoundVoltexFactory(Factory):
                 return VersionConstants.SDVX_GRAVITY_WARS
             elif date >= 2016122100:
                 return VersionConstants.SDVX_HEAVENLY_HAVEN
+            elif date >= 2020011500 and date < 2021042800:
+                # return VersionConstants.SDVX_VIVID_WAVE
+                return None
+            elif date >= 2021042800:
+                return VersionConstants.SDVX_EXCEED_GEAR
+
             return None
 
         if model.gamecode == "KFC":
@@ -62,6 +69,8 @@ class SoundVoltexFactory(Factory):
                     # We return the generic here because this is usually for profile
                     # checks, which means we only care about existence.
                     return SoundVoltexGravityWars(data, config, model)
+                if parentversion == VersionConstants.SDVX_EXCEED_GEAR:
+                    return SoundVoltexHeavenlyHaven(data, config, model)
 
                 # Unknown older version
                 return None
@@ -79,6 +88,8 @@ class SoundVoltexFactory(Factory):
                 return SoundVoltexGravityWarsSeason2(data, config, model)
         if version == VersionConstants.SDVX_HEAVENLY_HAVEN:
             return SoundVoltexHeavenlyHaven(data, config, model)
+        if version == VersionConstants.SDVX_EXCEED_GEAR:
+            return SoundVoltexExceedGear(data, config, model)
 
         # Unknown game
         return None
