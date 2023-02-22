@@ -2310,7 +2310,7 @@ class SoundVoltexExceedGear(
 
         # Song unlock config
         game_config = self.get_game_config()
-        if True:
+        if True:  # Force unlock all songs
             ids = set()
             songs = self.data.local.music.get_all_songs(self.game, self.version)
             for song in songs:
@@ -2391,7 +2391,7 @@ class SoundVoltexExceedGear(
         extend = Node.void("extend")
         game.add_child(extend)
 
-        # Use Information flag
+
         # Use Information flag
         if True:
             Title = "This is title"
@@ -2412,7 +2412,7 @@ class SoundVoltexExceedGear(
             info.add_child(Node.string("param_str_4", ""))
             info.add_child(Node.string("param_str_5", ""))
 
-        # megamix?
+        # Megamix battle
         str1 = "6,75,86,87,94,115,116,117,118,120,121,122,123,124,125,126,128,134,251,253,258,259,271,272,304,344," \
                "357,358,359,360,361,362,363,364,365,366,367,368,369,370,372,373,374,375,376,377,381,437,479,495,538," \
                "542,543,546,553,581,607,625,626,632,633,634,635,636,637,638,639,640,641,642,643,644,645,646,647,648," \
@@ -3206,7 +3206,7 @@ class SoundVoltexExceedGear(
                 info.add_child(Node.u32("id", itemid))
                 info.add_child(Node.u32("param", ids[itemid]))
 
-        # unlock appeal cards.
+        # unlock all appeal cards.
         if True:
             for appealcardid in range(1, 6000):
                 info = Node.void("info")
@@ -3215,7 +3215,7 @@ class SoundVoltexExceedGear(
                 info.add_child(Node.u32("id", appealcardid))
                 info.add_child(Node.u32("param", 1))
 
-        # unlock crew:
+        # unlock all crew:
         if True:
             for crewid in range(1, 999):
                 info = Node.void("info")
