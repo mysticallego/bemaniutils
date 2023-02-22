@@ -13,6 +13,7 @@ from bemani.data import Config, Data
 
 
 class SoundVoltexFactory(Factory):
+
     MANAGED_CLASSES: List[Type[Base]] = [
         SoundVoltexBooth,
         SoundVoltexInfiniteInfection,
@@ -40,7 +41,7 @@ class SoundVoltexFactory(Factory):
                 return VersionConstants.SDVX_INFINITE_INFECTION
             elif date >= 2014112000 and date < 2016122100:
                 return VersionConstants.SDVX_GRAVITY_WARS
-            elif date >= 2016122100:
+            elif date >= 2016122100 and date < 2020011500:
                 return VersionConstants.SDVX_HEAVENLY_HAVEN
             elif date >= 2020011500 and date < 2021042800:
                 # return VersionConstants.SDVX_VIVID_WAVE
