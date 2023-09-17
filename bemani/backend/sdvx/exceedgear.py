@@ -216,6 +216,8 @@ class SoundVoltexExceedGear(
             9: "SKILL ANALYZER 第4回 Bコース",
             10: "SKILL ANALYZER 第5回 Aコース",
             11: "SKILL ANALYZER 第5回 Bコース",
+            12: "SKILL ANALYZER 第6回",
+            13: "SKILL ANALYZER 第7回",
         }
 
     def __get_skill_analyzer_skill_levels(self) -> Dict[int, str]:
@@ -415,6 +417,42 @@ class SoundVoltexExceedGear(
                     },
                 ],
             },
+            {
+                "season_id": 12,
+                "skill_level": 1,
+                "tracks": [
+                    {
+                        "id": 1130,
+                        "type": self.CHART_TYPE_NOVICE,
+                    },
+                    {
+                        "id": 182,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                    {
+                        "id": 328,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                ],
+            },
+            {
+                "season_id": 13,
+                "skill_level": 1,
+                "tracks": [
+                    {
+                        "id": 1018,
+                        "type": self.CHART_TYPE_NOVICE,
+                    },
+                    {
+                        "id": 231,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                    {
+                        "id": 1734,
+                        "type": self.CHART_TYPE_NOVICE,
+                    },
+                ],
+            },
             # Skill LV.02
             {
                 "season_id": 1,
@@ -574,6 +612,42 @@ class SoundVoltexExceedGear(
                     },
                     {
                         "id": 944,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                ],
+            },
+            {
+                "season_id": 12,
+                "skill_level": 2,
+                "tracks": [
+                    {
+                        "id": 515,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                    {
+                        "id": 222,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                    {
+                        "id": 572,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                ],
+            },
+            {
+                "season_id": 13,
+                "skill_level": 2,
+                "tracks": [
+                    {
+                        "id": 278,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                    {
+                        "id": 919,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                    {
+                        "id": 92,
                         "type": self.CHART_TYPE_ADVANCED,
                     },
                 ],
@@ -741,6 +815,42 @@ class SoundVoltexExceedGear(
                     },
                 ],
             },
+            {
+                "season_id": 12,
+                "skill_level": 3,
+                "tracks": [
+                    {
+                        "id": 631,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                    {
+                        "id": 890,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                    {
+                        "id": 1748,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                ],
+            },
+            {
+                "season_id": 13,
+                "skill_level": 3,
+                "tracks": [
+                    {
+                        "id": 603,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                    {
+                        "id": 898,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                    {
+                        "id": 80,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                ],
+            },
             # Skill LV.04
             {
                 "season_id": 1,
@@ -900,6 +1010,42 @@ class SoundVoltexExceedGear(
                     },
                     {
                         "id": 1315,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                ],
+            },
+            {
+                "season_id": 12,
+                "skill_level": 4,
+                "tracks": [
+                    {
+                        "id": 205,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                    {
+                        "id": 1227,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                    {
+                        "id": 430,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                ],
+            },
+            {
+                "season_id": 13,
+                "skill_level": 4,
+                "tracks": [
+                    {
+                        "id": 966,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                    {
+                        "id": 983,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                    {
+                        "id": 797,
                         "type": self.CHART_TYPE_ADVANCED,
                     },
                 ],
@@ -1067,6 +1213,42 @@ class SoundVoltexExceedGear(
                     },
                 ],
             },
+            {
+                "season_id": 12,
+                "skill_level": 5,
+                "tracks": [
+                    {
+                        "id": 1162,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                    {
+                        "id": 1282,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                    {
+                        "id": 66,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                ],
+            },
+            {
+                "season_id": 13,
+                "skill_level": 5,
+                "tracks": [
+                    {
+                        "id": 345,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                    {
+                        "id": 1820,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                    {
+                        "id": 1192,
+                        "type": self.CHART_TYPE_ADVANCED,
+                    },
+                ],
+            },
             # Skill LV.06
             {
                 "season_id": 1,
@@ -1226,6 +1408,42 @@ class SoundVoltexExceedGear(
                     },
                     {
                         "id": 813,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                ],
+            },
+            {
+                "season_id": 12,
+                "skill_level": 6,
+                "tracks": [
+                    {
+                        "id": 1401,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                    {
+                        "id": 946,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                    {
+                        "id": 928,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                ],
+            },
+            {
+                "season_id": 13,
+                "skill_level": 6,
+                "tracks": [
+                    {
+                        "id": 998,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                    {
+                        "id": 1918,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                    {
+                        "id": 115,
                         "type": self.CHART_TYPE_EXHAUST,
                     },
                 ],
@@ -1393,6 +1611,60 @@ class SoundVoltexExceedGear(
                     },
                 ],
             },
+            {
+                "season_id": 11,
+                "skill_level": 7,
+                "tracks": [
+                    {
+                        "id": 1719,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                    {
+                        "id": 344,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                    {
+                        "id": 1322,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                ],
+            },
+            {
+                "season_id": 12,
+                "skill_level": 7,
+                "tracks": [
+                    {
+                        "id": 1873,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                    {
+                        "id": 1746,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                    {
+                        "id": 1004,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                ],
+            },
+            {
+                "season_id": 13,
+                "skill_level": 7,
+                "tracks": [
+                    {
+                        "id": 1842,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                    {
+                        "id": 480,
+                        "type": self.CHART_TYPE_INFINITE,
+                    },
+                    {
+                        "id": 361,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                ],
+            },
             # Skill LV.08
             {
                 "season_id": 1,
@@ -1553,6 +1825,60 @@ class SoundVoltexExceedGear(
                     {
                         "id": 1127,
                         "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                ],
+            },
+            {
+                "season_id": 11,
+                "skill_level": 8,
+                "tracks": [
+                    {
+                        "id": 1410,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                    {
+                        "id": 1761,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                    {
+                        "id": 63,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                ],
+            },
+            {
+                "season_id": 12,
+                "skill_level": 8,
+                "tracks": [
+                    {
+                        "id": 241,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                    {
+                        "id": 656,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                    {
+                        "id": 1016,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                ],
+            },
+            {
+                "season_id": 13,
+                "skill_level": 8,
+                "tracks": [
+                    {
+                        "id": 528,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                    {
+                        "id": 1841,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                    {
+                        "id": 272,
+                        "type": self.CHART_TYPE_EXHAUST,
                     },
                 ],
             },
@@ -1719,6 +2045,42 @@ class SoundVoltexExceedGear(
                     },
                 ],
             },
+            {
+                "season_id": 12,
+                "skill_level": 9,
+                "tracks": [
+                    {
+                        "id": 1159,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                    {
+                        "id": 1790,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                    {
+                        "id": 1137,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                ],
+            },
+            {
+                "season_id": 13,
+                "skill_level": 9,
+                "tracks": [
+                    {
+                        "id": 560,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                    {
+                        "id": 1471,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                    {
+                        "id": 1801,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                ],
+            },
             # Skill LV.10
             {
                 "season_id": 1,
@@ -1882,6 +2244,42 @@ class SoundVoltexExceedGear(
                     },
                 ],
             },
+            {
+                "season_id": 12,
+                "skill_level": 10,
+                "tracks": [
+                    {
+                        "id": 1806,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                    {
+                        "id": 994,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                    {
+                        "id": 787,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                ],
+            },
+            {
+                "season_id": 13,
+                "skill_level": 10,
+                "tracks": [
+                    {
+                        "id": 1962,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                    {
+                        "id": 1008,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                    {
+                        "id": 617,
+                        "type": self.CHART_TYPE_EXHAUST,
+                    },
+                ],
+            },
             # Skill LV.11
             {
                 "season_id": 1,
@@ -2027,6 +2425,42 @@ class SoundVoltexExceedGear(
                     },
                 ],
             },
+            {
+                "season_id": 12,
+                "skill_level": 11,
+                "tracks": [
+                    {
+                        "id": 1257,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                    {
+                        "id": 1778,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                    {
+                        "id": 1954,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                ],
+            },
+            {
+                "season_id": 13,
+                "skill_level": 11,
+                "tracks": [
+                    {
+                        "id": 1499,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                    {
+                        "id": 1037,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                    {
+                        "id": 1708,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                ],
+            },
             # Skill LV.INF
             {
                 "season_id": 1,
@@ -2168,6 +2602,42 @@ class SoundVoltexExceedGear(
                     },
                     {
                         "id": 1888,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                ],
+            },
+            {
+                "season_id": 12,
+                "skill_level": 12,
+                "tracks": [
+                    {
+                        "id": 1316,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                    {
+                        "id": 1272,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                    {
+                        "id": 2037,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                ],
+            },
+            {
+                "season_id": 13,
+                "skill_level": 12,
+                "tracks": [
+                    {
+                        "id": 525,
+                        "type": self.CHART_TYPE_INFINITE,
+                    },
+                    {
+                        "id": 1940,
+                        "type": self.CHART_TYPE_MAXIMUM,
+                    },
+                    {
+                        "id": 2038,
                         "type": self.CHART_TYPE_MAXIMUM,
                     },
                 ],
@@ -2376,15 +2846,21 @@ class SoundVoltexExceedGear(
         enable_event("CREW_SELECT_ABLE")
         enable_event("PREMIUM_TIME_ENABLE")
         enable_event("OMEGA_ENABLE\t1,2,3,4,5,6,7,8,9")
-        enable_event("HEXA_ENABLE\t1,2,3,4,5,6,7")
+        enable_event("HEXA_ENABLE\t1,2,3,4,5,6,7,8,9")
         enable_event("MEGAMIX_ENABLE")
         enable_event("VALGENE_ENABLE")
         enable_event("ARENA_ENABLE")
-        # follwing is for test, if error, just delete.
-        # enable_event("ARENA_ALTER_MODE_WINDOW_ENABLE")
-        # enable_event("ARENA_PASS_MATCH_WINDOW_ENABLE")
-        # enable_event("ARENA_VOTE_MODE_ENABLE")  # 选择是否投票
-        # enable_event("ARENA_LOCAL_TO_ONLINE_ENABLE")
+        enable_event("S_PUC_EFFECT_ENABLE")
+        enable_event("SUPER_RANDOM_ACTIVE")
+        enable_event("PLAYER_RADAR_ENABLE")
+        enable_event("SINGLE_BATTLE_ENABLE")
+        enable_event("BEGINNER_MUSIC_FOLDER")
+        enable_event("MEGAMIX_BATTLE_MATCH_ENABLE")
+        # follwing is for test, if error, just delete
+        enable_event("ARENA_ALTER_MODE_WINDOW_ENABLE")
+        enable_event("ARENA_PASS_MATCH_WINDOW_ENABLE")
+        enable_event("ARENA_VOTE_MODE_ENABLE")  # 选择是否投票
+        enable_event("ARENA_LOCAL_TO_ONLINE_ENABLE")
         # enable_event("ARENA_LOCAL_ULTIMATE_MATCH_ALWAYS")
 
         # Event parameters (we don't support story mode).
@@ -2456,6 +2932,7 @@ class SoundVoltexExceedGear(
         game.add_child(arena)
         arena.add_child(Node.s32("season", 1))
         arena.add_child(Node.s32("rule", 1))
+        arena.add_child(Node.s32_array("rank_match_target", [0] * 32))
         arena.add_child(Node.u64("time_start", 1668336402000))
         arena.add_child(Node.u64("time_end", 1704038400000))
         arena.add_child(Node.u64("shop_start", 1668336402000))
@@ -2503,9 +2980,7 @@ class SoundVoltexExceedGear(
 
             info.add_child(Node.s32("season_id", course["season_id"]))
             info.add_child(Node.string("season_name", seasons[course["season_id"]]))
-            info.add_child(
-                Node.bool("season_new_flg", course["season_id"] in {11})
-            )
+            info.add_child(Node.bool("season_new_flg", course["season_id"] in {12}))
             info.add_child(
                 Node.s16(
                     "course_id", course.get("course_id", course.get("skill_level", -1))
@@ -2524,6 +2999,7 @@ class SoundVoltexExceedGear(
             # If skill level is specified as '0', then the course type shows up as 'OTHER' instead of Skill Lv.01-12.
             info.add_child(Node.s16("course_type", course.get("course_type", 0)))
             info.add_child(Node.s16("skill_level", course.get("skill_level", 0)))
+            info.add_child(Node.s16("skill_type", 0))
             info.add_child(
                 Node.s16(
                     "skill_name_id",
@@ -2539,24 +3015,60 @@ class SoundVoltexExceedGear(
                     1 <= course.get("skill_level", -1) <= 7,
                 )
             )
+            info.add_child(Node.s32("clear_rate", 0))
+            info.add_child(Node.u32("avg_score", 0))
 
-            # Calculate clear rate and average score
-            rate = getrates(
-                course["season_id"],
-                course.get("course_id", course.get("skill_level", -1)),
+            for trackno, trackdata in enumerate(course["tracks"]):
+                track = Node.void("track")
+                info.add_child(track)
+                track.add_child(Node.s16("track_no", trackno))
+                track.add_child(Node.s32("music_id", trackdata["id"]))
+                track.add_child(Node.s8("music_type", trackdata["type"]))
+
+        for course in courses:
+            info = Node.void("info")
+            skill_course.add_child(info)
+
+            info.add_child(Node.s32("season_id", course["season_id"]))
+            info.add_child(Node.string("season_name", seasons[course["season_id"]]))
+            info.add_child(Node.bool("season_new_flg", course["season_id"] in {12}))
+            info.add_child(
+                Node.s16(
+                    "course_id", course.get("course_id", course.get("skill_level", -1))
+                )
             )
-            if rate["attempts"] > 0:
-                info.add_child(
-                    Node.s32(
-                        "clear_rate", int(100.0 * (rate["clears"] / rate["attempts"]))
-                    )
+            info.add_child(
+                Node.string(
+                    "course_name",
+                    course.get(
+                        "course_name",
+                        skill_levels.get(course.get("skill_level", -1), ""),
+                    ),
                 )
-                info.add_child(
-                    Node.u32("avg_score", rate["total_score"] // rate["attempts"])
+            )
+            # Course type 0 is skill level courses. The course type is the same as the skill level (01-12).
+            # If skill level is specified as '0', then the course type shows up as 'OTHER' instead of Skill Lv.01-12.
+            info.add_child(Node.s16("course_type", course.get("course_type", 0)))
+            info.add_child(Node.s16("skill_level", course.get("skill_level", 0)))
+            info.add_child(Node.s16("skill_type", 1))
+            info.add_child(
+                Node.s16(
+                    "skill_name_id",
+                    course.get(
+                        "skill_name_id",
+                        skill_name_ids.get(course.get("skill_level", -1), 0),
+                    ),
                 )
-            else:
-                info.add_child(Node.s32("clear_rate", 0))
-                info.add_child(Node.u32("avg_score", 0))
+            )
+            info.add_child(
+                Node.bool(
+                    "matching_assist",
+                    course.get("skill_level", -1) >= 1
+                    and course.get("skill_level", -1) <= 7,
+                )
+            )
+            info.add_child(Node.s32("clear_rate", 0))
+            info.add_child(Node.u32("avg_score", 0))
 
             for trackno, trackdata in enumerate(course["tracks"]):
                 track = Node.void("track")
@@ -2799,7 +3311,7 @@ class SoundVoltexExceedGear(
                             [
                                 score.id,
                                 score.chart,
-                                score.points,
+                                score.points, 0,
                                 self.__db_to_game_clear_type(
                                     score.data.get_int("clear_type")
                                 ),
@@ -2891,6 +3403,11 @@ class SoundVoltexExceedGear(
             "critical": track.child_value("critical"),
             "near": track.child_value("near"),
             "error": track.child_value("error"),
+            "effective_rate": track.child_value("effective_rate"),
+            "retry_cnt": track.child_value("retry_cnt"),
+            "drop_frame": track.child_value("drop_frame"),
+            "drop_frame_max": track.child_value("drop_frame_max"),
+            "drop_count": track.child_value("drop_count"),
         }
 
         # song = self.data.local.music.get_song(self.game, self.version, musicid, chart)
@@ -3110,6 +3627,7 @@ class SoundVoltexExceedGear(
         game.add_child(Node.u16("appeal_id", profile.get_int("appealid")))
         game.add_child(Node.s16("skill_base_id", profile.get_int("skill_base_id")))
         game.add_child(Node.s16("skill_name_id", profile.get_int("skill_name_id")))
+        game.add_child(Node.s16("skill_type", profile.get_int("skill_type")))
         game.add_child(Node.u32("gamecoin_packet", profile.get_int("packet")))
         game.add_child(Node.u32("gamecoin_block", profile.get_int("block")))
         game.add_child(Node.u32("blaster_energy", profile.get_int("blaster_energy")))
@@ -3239,32 +3757,51 @@ class SoundVoltexExceedGear(
             if course.type != "course":
                 continue
 
-            course_id = course.id % 100
-            season_id = int(course.id / 100)
+                # 神段位
+            if course.id > 10000:
+                course_id = course.id % 100
+                season_id = (course.id // 100) % 100
 
-            if course.data.get_int("clear_type") >= 2:
-                # The user cleared this, lets take the highest level clear for this
-                courselist = [
-                    c
-                    for c in self.__get_skill_analyzer_courses()
-                    if c.get("course_id", c.get("skill_level", -1)) == course_id
-                       and c["season_id"] == season_id
-                ]
-                if len(courselist) > 0:
-                    skill_level = max(skill_level, courselist[0]["skill_level"])
+                course_node = Node.void("course")
+                skill.add_child(course_node)
+                course_node.add_child(Node.s16("ssnid", season_id))
+                course_node.add_child(Node.s16("crsid", course_id))
+                course_node.add_child(Node.s32("ex", course.data.get_int("exscore")))
+                course_node.add_child(Node.s32("sc", course.data.get_int("score")))
+                course_node.add_child(Node.s16("ct", course.data.get_int("clear_type")))
+                course_node.add_child(Node.s16("gr", course.data.get_int("grade")))
+                course_node.add_child(Node.s16("st", 1))  # 0：普通段位 1：神段位
+                course_node.add_child(Node.s16("ar", course.data.get_int("achievement_rate")))
+                course_node.add_child(Node.s16("cnt", 1))
 
-            course_node = Node.void("course")
-            skill.add_child(course_node)
-            course_node.add_child(Node.s16("ssnid", season_id))
-            course_node.add_child(Node.s16("crsid", course_id))
-            course_node.add_child(Node.s32("ex", course.data.get_int("exscore")))
-            course_node.add_child(Node.s32("sc", course.data.get_int("score")))
-            course_node.add_child(Node.s16("ct", course.data.get_int("clear_type")))
-            course_node.add_child(Node.s16("gr", course.data.get_int("grade")))
-            course_node.add_child(
-                Node.s16("ar", course.data.get_int("achievement_rate"))
-            )
-            course_node.add_child(Node.s16("cnt", 1))
+            if course.id < 10000:
+                course_id = course.id % 100
+                season_id = int(course.id / 100)
+
+                if course.data.get_int("clear_type") >= 2:
+                    # The user cleared this, lets take the highest level clear for this
+                    courselist = [
+                        c
+                        for c in self.__get_skill_analyzer_courses()
+                        if c.get("course_id", c.get("skill_level", -1)) == course_id
+                        and c["season_id"] == season_id
+                    ]
+                    if len(courselist) > 0:
+                        skill_level = max(skill_level, courselist[0]["skill_level"])
+
+                course_node = Node.void("course")
+                skill.add_child(course_node)
+                course_node.add_child(Node.s16("ssnid", season_id))
+                course_node.add_child(Node.s16("crsid", course_id))
+                course_node.add_child(Node.s32("ex", course.data.get_int("exscore")))
+                course_node.add_child(Node.s32("sc", course.data.get_int("score")))
+                course_node.add_child(Node.s16("ct", course.data.get_int("clear_type")))
+                course_node.add_child(Node.s16("gr", course.data.get_int("grade")))
+                course_node.add_child(Node.s16("st", 0))
+                course_node.add_child(
+                    Node.s16("ar", course.data.get_int("achievement_rate"))
+                )
+                course_node.add_child(Node.s16("cnt", 1))
 
         # Calculated skill level
         game.add_child(Node.s16("skill_level", skill_level))
@@ -3346,6 +3883,7 @@ class SoundVoltexExceedGear(
         newprofile.replace_int("skill_level", request.child_value("skill_level"))
         newprofile.replace_int("skill_base_id", request.child_value("skill_base_id"))
         newprofile.replace_int("skill_name_id", request.child_value("skill_name_id"))
+        newprofile.replace_int("skill_type", request.child_value("skill_type"))
 
         # Update user's unlock status if we aren't force unlocked
         game_config = self.get_game_config()
@@ -3418,14 +3956,25 @@ class SoundVoltexExceedGear(
             grade = course.child_value("gr")
             score = course.child_value("sc")
             exscore = course.child_value("ex")
+            skill_type = course.child_value("st")
 
-            # Do not update the course achievement when old score is greater.
-            old = self.data.local.user.get_achievement(
-                self.game, self.version, userid, (season_id * 100) + course_id, "course"
-            )
-            if old is not None and old.get_int("score") > score:
-                pass
-            if (old is not None and old.get_int("score") < score) or old is None:
+            if (skill_type == 0) or skill_type is None:
+                # Do not update the course achievement when old score is greater.
+                old = self.data.local.user.get_achievement(
+                    self.game, self.version, userid, (season_id * 100) + course_id, "course"
+                )
+                if old is None:
+                    clear_type_max = clear_type
+                    score_max = score
+                    exscore_max = exscore
+                    grade_max = grade
+                    achievement_rate_max = achievement_rate
+                if old is not None:
+                    clear_type_max = max(clear_type, old.get_int("clear_type"))
+                    score_max = max(score, old.get_int("score"))
+                    exscore_max = max(exscore, old.get_int("exscore"))
+                    grade_max = max(grade, old.get_int("grade"))
+                    achievement_rate_max = max(achievement_rate, old.get_int("achievement_rate"))
                 self.data.local.user.put_achievement(
                     self.game,
                     self.version,
@@ -3433,11 +3982,44 @@ class SoundVoltexExceedGear(
                     (season_id * 100) + course_id,
                     "course",
                     {
-                        "clear_type": clear_type,
-                        "achievement_rate": achievement_rate,
-                        "score": score,
-                        "grade": grade,
-                        "exscore": exscore,
+                        "clear_type": clear_type_max,
+                        "achievement_rate": achievement_rate_max,
+                        "score": score_max,
+                        "grade": grade_max,
+                        "exscore": exscore_max,
+                    },
+                )
+
+            # 保存神段位成绩
+            if skill_type == 1:
+                # Do not update the course achievement when old score is greater.
+                old = self.data.local.user.get_achievement(
+                    self.game, self.version, userid, 10000 + (season_id * 100) + course_id, "course"
+                )
+                if old is None:
+                    clear_type_max = clear_type
+                    score_max = score
+                    exscore_max = exscore
+                    grade_max = grade
+                    achievement_rate_max = achievement_rate
+                if old is not None:
+                    clear_type_max = max(clear_type, old.get_int("clear_type"))
+                    score_max = max(score, old.get_int("score"))
+                    exscore_max = max(exscore, old.get_int("exscore"))
+                    grade_max = max(grade, old.get_int("grade"))
+                    achievement_rate_max = max(achievement_rate, old.get_int("achievement_rate"))
+                self.data.local.user.put_achievement(
+                    self.game,
+                    self.version,
+                    userid,
+                    10000 + (season_id * 100) + course_id,
+                    "course",
+                    {
+                        "clear_type": clear_type_max,
+                        "achievement_rate": achievement_rate_max,
+                        "score": score_max,
+                        "grade": grade_max,
+                        "exscore": exscore_max,
                     },
                 )
 
