@@ -9,13 +9,21 @@ import json
 import os
 import struct
 import xml.etree.ElementTree as ET
+from pathlib import Path
 from sqlalchemy.engine import CursorResult  # type: ignore
 from sqlalchemy.orm import sessionmaker  # type: ignore
 from sqlalchemy.sql import text  # type: ignore
 from sqlalchemy.exc import IntegrityError  # type: ignore
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from bemani.common import GameConstants, VersionConstants, DBConstants, PEFile, Time
+from bemani.common import (
+    GameConstants,
+    VersionConstants,
+    DBConstants,
+    PEFile,
+    InvalidOffsetException,
+    Time,
+)
 from bemani.format import ARC, IFS, IIDXChart, IIDXMusicDB
 from bemani.data import Config, Server, Song
 from bemani.data.interfaces import APIProviderInterface
@@ -24,6 +32,10 @@ from bemani.data.api.game import GlobalGameData
 from bemani.data.mysql.music import MusicData
 from bemani.data.mysql.user import UserData
 from bemani.utils.config import load_config
+
+
+class CLIException(Exception):
+    pass
 
 
 class ReadAPI(APIProviderInterface):
@@ -380,6 +392,77 @@ class ImportBase:
             self.__engine = None
 
 
+class PopnScrapeConfiguration:
+    def __init__(
+        self,
+        *,
+        version: str,
+        offset: int,
+        step: int,
+        length: int,
+        file_offset: int,
+        file_step: int,
+        genre_offset: int,
+        title_offset: int,
+        artist_offset: int,
+        comment_offset: int,
+        english_title_offset: Optional[int],
+        english_artist_offset: Optional[int],
+        extended_genre_offset: Optional[int],
+        charts_offset: int,
+        folder_offset: int,
+        easy_offset: int,
+        normal_offset: int,
+        hyper_offset: int,
+        ex_offset: int,
+        battle_normal_offset: int,
+        battle_hyper_offset: int,
+        easy_file_offset: int,
+        normal_file_offset: int,
+        hyper_file_offset: int,
+        ex_file_offset: int,
+        battle_normal_file_offset: int,
+        battle_hyper_file_offset: int,
+        packedfmt: str,
+        file_folder_offset: int,
+        file_name_offset: int,
+        filefmt: str,
+        available_charts: Callable[[int], Tuple[bool, bool, bool, bool, bool, bool]],
+    ) -> None:
+        self.version = version
+        self.offset = offset
+        self.step = step
+        self.length = length
+        self.file_offset = file_offset
+        self.file_step = file_step
+        self.genre_offset = genre_offset
+        self.title_offset = title_offset
+        self.artist_offset = artist_offset
+        self.comment_offset = comment_offset
+        self.english_title_offset = english_title_offset
+        self.english_artist_offset = english_artist_offset
+        self.extended_genre_offset = extended_genre_offset
+        self.charts_offset = charts_offset
+        self.folder_offset = folder_offset
+        self.easy_offset = easy_offset
+        self.normal_offset = normal_offset
+        self.hyper_offset = hyper_offset
+        self.ex_offset = ex_offset
+        self.battle_normal_offset = battle_normal_offset
+        self.battle_hyper_offset = battle_hyper_offset
+        self.easy_file_offset = easy_file_offset
+        self.normal_file_offset = normal_file_offset
+        self.hyper_file_offset = hyper_file_offset
+        self.ex_file_offset = ex_file_offset
+        self.battle_normal_file_offset = battle_normal_file_offset
+        self.battle_hyper_file_offset = battle_hyper_file_offset
+        self.packedfmt = packedfmt
+        self.file_folder_offset = file_folder_offset
+        self.file_name_offset = file_name_offset
+        self.filefmt = filefmt
+        self.available_charts = available_charts
+
+
 class ImportPopn(ImportBase):
     def __init__(
         self,
@@ -397,6 +480,12 @@ class ImportPopn(ImportBase):
             "24": VersionConstants.POPN_MUSIC_USANEKO,
             "25": VersionConstants.POPN_MUSIC_PEACE,
             "26": VersionConstants.POPN_MUSIC_KAIMEI_RIDDLES,
+            "omni-24": VersionConstants.POPN_MUSIC_USANEKO
+            + DBConstants.OMNIMIX_VERSION_BUMP,  # Omnimix v2 only works for 24 - 26
+            "omni-25": VersionConstants.POPN_MUSIC_PEACE
+            + DBConstants.OMNIMIX_VERSION_BUMP,
+            "omni-26": VersionConstants.POPN_MUSIC_KAIMEI_RIDDLES
+            + DBConstants.OMNIMIX_VERSION_BUMP,
         }.get(version, -1)
 
         if actual_version == VersionConstants.POPN_MUSIC_TUNE_STREET:
@@ -408,847 +497,122 @@ class ImportPopn(ImportBase):
             # Newer pop'n has charts for easy, normal, hyper, another
             self.charts = [0, 1, 2, 3]
         else:
-            raise Exception(
-                "Unsupported Pop'n Music version, expected one of the following: 19, 20, 21, 22, 23, 24, 25, 26!"
+            raise CLIException(
+                "Unsupported Pop'n Music version, expected one of the following: 19, 20, 21, 22, 23, 24, omni-24, 25, omni-25, 26, omni-26!"
             )
 
         super().__init__(
             config, GameConstants.POPN_MUSIC, actual_version, no_combine, update
         )
 
-    def scrape(self, infile: str) -> List[Dict[str, Any]]:
-        with open(infile, mode="rb") as myfile:
-            data = myfile.read()
-            myfile.close()
-
-        pe = PEFile(data)
-
-        if self.version == VersionConstants.POPN_MUSIC_TUNE_STREET:
-            # Based on K39:J:A:A:2010122200
-
-            # Normal offset for music DB, size
-            offset = 0x1F68E8
-            step = 72
-            length = 1048
-
-            # Offset and step of file DB
-            file_offset = 0x2D6888
-            file_step = 24
-
-            # Standard lookups
-            genre_offset = 0
-            title_offset = 1
-            artist_offset = 2
-            comment_offset = 3
-            english_title_offset = -1
-            english_artist_offset = -1
-            extended_genre_offset = -1
-            charts_offset = 6
-            folder_offset = 7
-
-            # Offsets for normal chart difficulties
-            easy_offset = 12
-            normal_offset = 10
-            hyper_offset = 11
-            ex_offset = 13
-
-            # Offsets for battle chart difficulties
-            battle_normal_offset = 14
-            battle_hyper_offset = 15
-
-            # Offsets into which offset to seek to for file lookups
-            easy_file_offset = 18
-            normal_file_offset = 16
-            hyper_file_offset = 17
-            ex_file_offset = 19
-            battle_normal_file_offset = 20
-            battle_hyper_file_offset = 21
-
-            packedfmt = (
-                "<"
-                "I"  # Genre
-                "I"  # Title
-                "I"  # Artist
-                "I"  # Comment
-                "H"  # ??
-                "H"  # ??
-                "I"  # Available charts mask
-                "I"  # Folder
-                "I"  # Event flags?
-                "B"  # Event flags?
-                "B"  # Normal difficulty
-                "B"  # Hyper difficulty
-                "B"  # Easy difficulty
-                "B"  # EX difficulty
-                "B"  # Battle normal difficulty
-                "B"  # Battle hyper difficulty
-                "x"  # ??
-                "x"  # ??
-                "x"  # ??
-                "H"  # Normal chart pointer
-                "H"  # Hyper chart pointer
-                "H"  # Easy chart pointer
-                "H"  # EX chart pointer
-                "H"  # Battle normal pointer
-                "H"  # Battle hyper pointer
-                "xxxxxxxxxxxxxxxxxx"
-            )
-
-            # Offsets into file DB for finding file and folder.
-            file_folder_offset = 0
-            file_name_offset = 1
-
-            filefmt = "<" "I" "I" "I" "I" "I" "I"  # Folder  # Filename
-
-            # Decoding function for chart masks
-            def available_charts(
-                mask: int,
-            ) -> Tuple[bool, bool, bool, bool, bool, bool]:
-                return (
-                    True,  # Always an easy chart
-                    True,  # Always a normal chart
-                    mask & 0x1000000 > 0,  # Hyper chart bit
-                    mask & 0x2000000 > 0,  # Ex chart bit
-                    True,  # Always a battle normal chart
-                    mask & 0x4000000 > 0,  # Battle hyper chart bit
-                )
-
-        elif self.version == VersionConstants.POPN_MUSIC_FANTASIA:
-            # Based on L39:J:A:A:2012091900
-
-            # Normal offset for music DB, size
-            offset = 0x1AE240
-            step = 160
-            length = 1122
-
-            # Offset and step of file DB
-            file_offset = 0x273768
-            file_step = 24
-
-            # Standard lookups
-            genre_offset = 0
-            title_offset = 1
-            artist_offset = 2
-            comment_offset = 3
-            english_title_offset = -1
-            english_artist_offset = -1
-            extended_genre_offset = -1
-            charts_offset = 6
-            folder_offset = 7
-
-            # Offsets for normal chart difficulties
-            easy_offset = 12
-            normal_offset = 10
-            hyper_offset = 11
-            ex_offset = 13
-
-            # Offsets for battle chart difficulties
-            battle_normal_offset = 14
-            battle_hyper_offset = 15
-
-            # Offsets into which offset to seek to for file lookups
-            easy_file_offset = 18
-            normal_file_offset = 16
-            hyper_file_offset = 17
-            ex_file_offset = 19
-            battle_normal_file_offset = 20
-            battle_hyper_file_offset = 21
-
-            packedfmt = (
-                "<"
-                "I"  # Genre
-                "I"  # Title
-                "I"  # Artist
-                "I"  # Comment
-                "H"  # ??
-                "H"  # ??
-                "I"  # Available charts mask
-                "I"  # Folder
-                "I"  # Event flags?
-                "B"  # Event flags?
-                "B"  # Normal difficulty
-                "B"  # Hyper difficulty
-                "B"  # Easy difficulty
-                "B"  # EX difficulty
-                "B"  # Battle normal difficulty
-                "B"  # Battle hyper difficulty
-                "x"  # ??
-                "x"  # ??
-                "x"  # ??
-                "H"  # Normal chart pointer
-                "H"  # Hyper chart pointer
-                "H"  # Easy chart pointer
-                "H"  # EX chart pointer
-                "H"  # Battle normal pointer
-                "H"  # Battle hyper pointer
-                "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            )
-
-            # Offsets into file DB for finding file and folder.
-            file_folder_offset = 0
-            file_name_offset = 1
-
-            filefmt = "<" "I" "I" "I" "I" "I" "I"  # Folder  # Filename
-
-            # Decoding function for chart masks
-            def available_charts(
-                mask: int,
-            ) -> Tuple[bool, bool, bool, bool, bool, bool]:
-                return (
-                    True,  # Always an easy chart
-                    True,  # Always a normal chart
-                    mask & 0x1000000 > 0,  # Hyper chart bit
-                    mask & 0x2000000 > 0,  # Ex chart bit
-                    True,  # Always a battle normal chart
-                    mask & 0x4000000 > 0,  # Battle hyper chart bit
-                )
-
-        elif self.version == VersionConstants.POPN_MUSIC_SUNNY_PARK:
-            # Based on M39:J:A:A:2014061900
-
-            # Normal offset for music DB, size
-            offset = 0x1FB640
-            step = 164
-            length = 1280
-
-            # Offset and step of file DB
-            file_offset = 0x2E0D20
-            file_step = 28
-
-            # Standard lookups
-            genre_offset = 0
-            title_offset = 1
-            artist_offset = 2
-            comment_offset = 3
-            english_title_offset = 4
-            english_artist_offset = 5
-            extended_genre_offset = 6
-            charts_offset = 9
-            folder_offset = 10
-
-            # Offsets for normal chart difficulties
-            easy_offset = 13
-            normal_offset = 14
-            hyper_offset = 15
-            ex_offset = 16
-
-            # Offsets for battle chart difficulties
-            battle_normal_offset = 17
-            battle_hyper_offset = 18
-
-            # Offsets into which offset to seek to for file lookups
-            easy_file_offset = 19
-            normal_file_offset = 20
-            hyper_file_offset = 21
-            ex_file_offset = 22
-            battle_normal_file_offset = 21
-            battle_hyper_file_offset = 22
-
-            packedfmt = (
-                "<"
-                "I"  # Genre
-                "I"  # Title
-                "I"  # Artist
-                "I"  # Comment
-                "I"  # English Title
-                "I"  # English Artist
-                "I"  # Extended genre?
-                "H"  # ??
-                "H"  # ??
-                "I"  # Available charts mask
-                "I"  # Folder
-                "I"  # Event unlocks?
-                "H"  # Event unlocks?
-                "B"  # Easy difficulty
-                "B"  # Normal difficulty
-                "B"  # Hyper difficulty
-                "B"  # EX difficulty
-                "B"  # Battle normal difficulty
-                "B"  # Battle hyper difficulty
-                "H"  # Easy chart pointer
-                "H"  # Normal chart pointer
-                "H"  # Hyper chart pointer
-                "H"  # EX chart pointer
-                "H"  # Battle normal pointer
-                "H"  # Battle hyper pointer
-                "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            )
-
-            # Offsets into file DB for finding file and folder.
-            file_folder_offset = 0
-            file_name_offset = 1
-
-            filefmt = "<" "I" "I" "I" "I" "I" "I" "I"  # Folder  # Filename
-
-            # Decoding function for chart masks
-            def available_charts(
-                mask: int,
-            ) -> Tuple[bool, bool, bool, bool, bool, bool]:
-                return (
-                    mask & 0x0080000 > 0,  # Easy chart bit
-                    True,  # Always a normal chart
-                    mask & 0x1000000 > 0,  # Hyper chart bit
-                    mask & 0x2000000 > 0,  # Ex chart bit
-                    True,  # Always a battle normal chart
-                    mask & 0x4000000 > 0,  # Battle hyper chart bit
-                )
-
-        elif self.version == VersionConstants.POPN_MUSIC_LAPISTORIA:
-            # Based on M39:J:A:A:2015081900
-
-            # Normal offset for music DB, size
-            offset = 0x3124B0
-            step = 160
-            length = 1423
-
-            # Offset and step of file DB
-            file_offset = 0x472130
-            file_step = 28
-
-            # Standard lookups
-            genre_offset = 0
-            title_offset = 1
-            artist_offset = 2
-            comment_offset = 3
-            english_title_offset = 4
-            english_artist_offset = 5
-            extended_genre_offset = -1
-            charts_offset = 8
-            folder_offset = 9
-
-            # Offsets for normal chart difficulties
-            easy_offset = 12
-            normal_offset = 13
-            hyper_offset = 14
-            ex_offset = 15
-
-            # Offsets for battle chart difficulties
-            battle_normal_offset = 16
-            battle_hyper_offset = 17
-
-            # Offsets into which offset to seek to for file lookups
-            easy_file_offset = 18
-            normal_file_offset = 19
-            hyper_file_offset = 20
-            ex_file_offset = 21
-            battle_normal_file_offset = 22
-            battle_hyper_file_offset = 23
-
-            packedfmt = (
-                "<"
-                "I"  # Genre
-                "I"  # Title
-                "I"  # Artist
-                "I"  # Comment
-                "I"  # English Title
-                "I"  # English Artist
-                "H"  # ??
-                "H"  # ??
-                "I"  # Available charts mask
-                "I"  # Folder
-                "I"  # Event unlocks?
-                "H"  # Event unlocks?
-                "B"  # Easy difficulty
-                "B"  # Normal difficulty
-                "B"  # Hyper difficulty
-                "B"  # EX difficulty
-                "B"  # Battle normal difficulty
-                "B"  # Battle hyper difficulty
-                "H"  # Easy chart pointer
-                "H"  # Normal chart pointer
-                "H"  # Hyper chart pointer
-                "H"  # EX chart pointer
-                "H"  # Battle normal pointer
-                "H"  # Battle hyper pointer
-                "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            )
-
-            # Offsets into file DB for finding file and folder.
-            file_folder_offset = 0
-            file_name_offset = 1
-
-            filefmt = "<" "I" "I" "I" "I" "I" "I" "I"  # Folder  # Filename
-
-            # Decoding function for chart masks
-            def available_charts(
-                mask: int,
-            ) -> Tuple[bool, bool, bool, bool, bool, bool]:
-                return (
-                    mask & 0x0080000 > 0,  # Easy chart bit
-                    True,  # Always a normal chart
-                    mask & 0x1000000 > 0,  # Hyper chart bit
-                    mask & 0x2000000 > 0,  # Ex chart bit
-                    True,  # Always a battle normal chart
-                    mask & 0x4000000 > 0,  # Battle hyper chart bit
-                )
-
-        elif self.version == VersionConstants.POPN_MUSIC_ECLALE:
-            # Based on M39:J:A:A:2016100500
-
-            # Normal offset for music DB, size
-            offset = 0x2DE5C8
-            step = 160
-            length = 1551
-
-            # Offset and step of file DB
-            file_offset = 0x2D1948
-            file_step = 32
-
-            # Standard lookups
-            genre_offset = 0
-            title_offset = 1
-            artist_offset = 2
-            comment_offset = 3
-            english_title_offset = 4
-            english_artist_offset = 5
-            extended_genre_offset = -1
-            charts_offset = 8
-            folder_offset = 9
-
-            # Offsets for normal chart difficulties
-            easy_offset = 12
-            normal_offset = 13
-            hyper_offset = 14
-            ex_offset = 15
-
-            # Offsets for battle chart difficulties
-            battle_normal_offset = 16
-            battle_hyper_offset = 17
-
-            # Offsets into which offset to seek to for file lookups
-            easy_file_offset = 18
-            normal_file_offset = 19
-            hyper_file_offset = 20
-            ex_file_offset = 21
-            battle_normal_file_offset = 22
-            battle_hyper_file_offset = 23
-
-            packedfmt = (
-                "<"
-                "I"  # Genre
-                "I"  # Title
-                "I"  # Artist
-                "I"  # Comment
-                "I"  # English Title
-                "I"  # English Artist
-                "H"  # ??
-                "H"  # ??
-                "I"  # Available charts mask
-                "I"  # Folder
-                "I"  # Event unlocks?
-                "H"  # Event unlocks?
-                "B"  # Easy difficulty
-                "B"  # Normal difficulty
-                "B"  # Hyper difficulty
-                "B"  # EX difficulty
-                "B"  # Battle normal difficulty
-                "B"  # Battle hyper difficulty
-                "H"  # Easy chart pointer
-                "H"  # Normal chart pointer
-                "H"  # Hyper chart pointer
-                "H"  # EX chart pointer
-                "H"  # Battle normal pointer
-                "H"  # Battle hyper pointer
-                "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            )
-
-            # Offsets into file DB for finding file and folder.
-            file_folder_offset = 0
-            file_name_offset = 1
-
-            filefmt = "<" "I" "I" "I" "I" "I" "I" "I" "I"  # Folder  # Filename
-
-            # Decoding function for chart masks
-            def available_charts(
-                mask: int,
-            ) -> Tuple[bool, bool, bool, bool, bool, bool]:
-                return (
-                    mask & 0x0080000 > 0,  # Easy chart bit
-                    True,  # Always a normal chart
-                    mask & 0x1000000 > 0,  # Hyper chart bit
-                    mask & 0x2000000 > 0,  # Ex chart bit
-                    True,  # Always a battle normal chart
-                    mask & 0x4000000 > 0,  # Battle hyper chart bit
-                )
-
-        elif self.version == VersionConstants.POPN_MUSIC_USANEKO:
-            # Based on M39:J:A:A:2018101500
-
-            # Normal offset for music DB, size
-            offset = 0x299210
-            step = 172
-            length = 1704
-
-            # Offset and step of file DB
-            file_offset = 0x28AF08
-            file_step = 32
-
-            # Standard lookups
-            genre_offset = 0
-            title_offset = 1
-            artist_offset = 2
-            comment_offset = 3
-            english_title_offset = 4
-            english_artist_offset = 5
-            extended_genre_offset = -1
-            charts_offset = 8
-            folder_offset = 9
-
-            # Offsets for normal chart difficulties
-            easy_offset = 12
-            normal_offset = 13
-            hyper_offset = 14
-            ex_offset = 15
-
-            # Offsets for battle chart difficulties
-            battle_normal_offset = 16
-            battle_hyper_offset = 17
-
-            # Offsets into which offset to seek to for file lookups
-            easy_file_offset = 18
-            normal_file_offset = 19
-            hyper_file_offset = 20
-            ex_file_offset = 21
-            battle_normal_file_offset = 22
-            battle_hyper_file_offset = 23
-
-            packedfmt = (
-                "<"
-                "I"  # Genre
-                "I"  # Title
-                "I"  # Artist
-                "I"  # Comment
-                "I"  # English Title
-                "I"  # English Artist
-                "H"  # ??
-                "H"  # ??
-                "I"  # Available charts mask
-                "I"  # Folder
-                "I"  # Event unlocks?
-                "I"  # Event unlocks?
-                "B"  # Easy difficulty
-                "B"  # Normal difficulty
-                "B"  # Hyper difficulty
-                "B"  # EX difficulty
-                "B"  # Battle normal difficulty
-                "B"  # Battle hyper difficulty
-                "xx"  # Unknown pointer
-                "H"  # Easy chart pointer
-                "H"  # Normal chart pointer
-                "H"  # Hyper chart pointer
-                "H"  # EX chart pointer
-                "H"  # Battle normal pointer
-                "H"  # Battle hyper pointer
-                "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            )
-
-            # Offsets into file DB for finding file and folder.
-            file_folder_offset = 0
-            file_name_offset = 1
-
-            filefmt = "<" "I" "I" "I" "I" "I" "I" "I" "I"  # Folder  # Filename
-
-            # Decoding function for chart masks
-            def available_charts(
-                mask: int,
-            ) -> Tuple[bool, bool, bool, bool, bool, bool]:
-                return (
-                    mask & 0x0080000 > 0,  # Easy chart bit
-                    True,  # Always a normal chart
-                    mask & 0x1000000 > 0,  # Hyper chart bit
-                    mask & 0x2000000 > 0,  # Ex chart bit
-                    True,  # Always a battle normal chart
-                    mask & 0x4000000 > 0,  # Battle hyper chart bit
-                )
-
-        elif self.version == VersionConstants.POPN_MUSIC_PEACE:
-            # Based on M39:J:A:A:2020092800
-
-            # Normal offset for music DB, size
-            offset = 0x2C7C78
-            step = 172
-            length = 1877
-
-            # Offset and step of file DB
-            file_offset = 0x2B8010
-            file_step = 32
-
-            # Standard lookups
-            genre_offset = 0
-            title_offset = 1
-            artist_offset = 2
-            comment_offset = 3
-            english_title_offset = 4
-            english_artist_offset = 5
-            extended_genre_offset = -1
-            charts_offset = 8
-            folder_offset = 9
-
-            # Offsets for normal chart difficulties
-            easy_offset = 12
-            normal_offset = 13
-            hyper_offset = 14
-            ex_offset = 15
-
-            # Offsets for battle chart difficulties
-            battle_normal_offset = 16
-            battle_hyper_offset = 17
-
-            # Offsets into which offset to seek to for file lookups
-            easy_file_offset = 18
-            normal_file_offset = 19
-            hyper_file_offset = 20
-            ex_file_offset = 21
-            battle_normal_file_offset = 22
-            battle_hyper_file_offset = 23
-
-            packedfmt = (
-                "<"
-                "I"  # Genre
-                "I"  # Title
-                "I"  # Artist
-                "I"  # Comment
-                "I"  # English Title
-                "I"  # English Artist
-                "H"  # ??
-                "H"  # ??
-                "I"  # Available charts mask
-                "I"  # Folder
-                "I"  # Event unlocks?
-                "I"  # Event unlocks?
-                "B"  # Easy difficulty
-                "B"  # Normal difficulty
-                "B"  # Hyper difficulty
-                "B"  # EX difficulty
-                "B"  # Battle normal difficulty
-                "B"  # Battle hyper difficulty
-                "xx"  # Unknown pointer
-                "H"  # Easy chart pointer
-                "H"  # Normal chart pointer
-                "H"  # Hyper chart pointer
-                "H"  # EX chart pointer
-                "H"  # Battle normal pointer
-                "H"  # Battle hyper pointer
-                "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            )
-
-            # Offsets into file DB for finding file and folder.
-            file_folder_offset = 0
-            file_name_offset = 1
-
-            filefmt = "<" "I" "I" "I" "I" "I" "I" "I" "I"  # Folder  # Filename
-
-            # Decoding function for chart masks
-            def available_charts(
-                mask: int,
-            ) -> Tuple[bool, bool, bool, bool, bool, bool]:
-                return (
-                    mask & 0x0080000 > 0,  # Easy chart bit
-                    True,  # Always a normal chart
-                    mask & 0x1000000 > 0,  # Hyper chart bit
-                    mask & 0x2000000 > 0,  # Ex chart bit
-                    True,  # Always a battle normal chart
-                    mask & 0x4000000 > 0,  # Battle hyper chart bit
-                )
-
-        elif self.version == VersionConstants.POPN_MUSIC_KAIMEI_RIDDLES:
-            # Based on M39:J:A:A:2022061300
-
-            # Normal offset for music DB, size
-            offset = 0x2DEA68
-            step = 172
-            length = 2019
-
-            # Offset and step of file DB
-            file_offset = 0x2CDB00
-            file_step = 32
-
-            # Standard lookups
-            genre_offset = 0
-            title_offset = 1
-            artist_offset = 2
-            comment_offset = 3
-            english_title_offset = 4
-            english_artist_offset = 5
-            extended_genre_offset = -1
-            charts_offset = 8
-            folder_offset = 9
-
-            # Offsets for normal chart difficulties
-            easy_offset = 12
-            normal_offset = 13
-            hyper_offset = 14
-            ex_offset = 15
-
-            # Offsets for battle chart difficulties
-            battle_normal_offset = 16
-            battle_hyper_offset = 17
-
-            # Offsets into which offset to seek to for file lookups
-            easy_file_offset = 18
-            normal_file_offset = 19
-            hyper_file_offset = 20
-            ex_file_offset = 21
-            battle_normal_file_offset = 22
-            battle_hyper_file_offset = 23
-
-            packedfmt = (
-                "<"
-                "I"  # Genre
-                "I"  # Title
-                "I"  # Artist
-                "I"  # Comment
-                "I"  # English Title
-                "I"  # English Artist
-                "H"  # ??
-                "H"  # ??
-                "I"  # Available charts mask
-                "I"  # Folder
-                "I"  # Event unlocks?
-                "I"  # Event unlocks?
-                "B"  # Easy difficulty
-                "B"  # Normal difficulty
-                "B"  # Hyper difficulty
-                "B"  # EX difficulty
-                "B"  # Battle normal difficulty
-                "B"  # Battle hyper difficulty
-                "xx"  # Unknown pointer
-                "H"  # Easy chart pointer
-                "H"  # Normal chart pointer
-                "H"  # Hyper chart pointer
-                "H"  # EX chart pointer
-                "H"  # Battle normal pointer
-                "H"  # Battle hyper pointer
-                "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            )
-
-            # Offsets into file DB for finding file and folder.
-            file_folder_offset = 0
-            file_name_offset = 1
-
-            filefmt = "<" "I" "I" "I" "I" "I" "I" "I" "I"  # Folder  # Filename
-
-            # Decoding function for chart masks
-            def available_charts(
-                mask: int,
-            ) -> Tuple[bool, bool, bool, bool, bool, bool]:
-                return (
-                    mask & 0x0080000 > 0,  # Easy chart bit
-                    True,  # Always a normal chart
-                    mask & 0x1000000 > 0,  # Hyper chart bit
-                    mask & 0x2000000 > 0,  # Ex chart bit
-                    True,  # Always a battle normal chart
-                    mask & 0x4000000 > 0,  # Battle hyper chart bit
-                )
-
-        else:
-            raise Exception(f"Unsupported version {self.version}")
-
-        def read_string(offset: int) -> str:
-            # First, translate load offset in memory to disk offset
-            offset = pe.virtual_to_physical(offset)
-
-            # Now, grab bytes until we're null-terminated
-            bytestring = []
-            while data[offset] != 0:
-                bytestring.append(data[offset])
-                offset = offset + 1
-
-            # Its shift-jis encoded, so decode it now
-            return bytes(bytestring).decode("shift_jisx0213")
-
-        def file_chunk(offset: int) -> Tuple[Any, ...]:
-            fileoffset = file_offset + (file_step * offset)
-            filedata = data[fileoffset : (fileoffset + file_step)]
-            return struct.unpack(filefmt, filedata)
-
-        def file_handle(offset: int) -> str:
-            chunk = file_chunk(offset)
-            return (
-                read_string(chunk[file_folder_offset])
-                + "/"
-                + read_string(chunk[file_name_offset])
-            )
-
-        songs = []
-        for songid in range(length):
-            chunkoffset = offset + (step * songid)
-            chunkdata = data[chunkoffset : (chunkoffset + step)]
-            unpacked = struct.unpack(packedfmt, chunkdata)
-            valid_charts = available_charts(unpacked[charts_offset])
-            songinfo = {
-                "id": songid,
-                "title": read_string(unpacked[title_offset]),
-                "artist": read_string(unpacked[artist_offset]),
-                "genre": read_string(unpacked[genre_offset]),
-                "comment": read_string(unpacked[comment_offset]),
-                "title_en": read_string(unpacked[english_title_offset])
-                if english_title_offset > 0
-                else "",
-                "artist_en": read_string(unpacked[english_artist_offset])
-                if english_artist_offset > 0
-                else "",
-                "long_genre": read_string(unpacked[extended_genre_offset])
-                if extended_genre_offset > 0
-                else "",
-                "folder": unpacked[folder_offset],
-                "difficulty": {
-                    "standard": {
-                        "easy": unpacked[easy_offset] if valid_charts[0] else 0,
-                        "normal": unpacked[normal_offset] if valid_charts[1] else 0,
-                        "hyper": unpacked[hyper_offset] if valid_charts[2] else 0,
-                        "ex": unpacked[ex_offset] if valid_charts[3] else 0,
-                    },
-                    "battle": {
-                        "normal": unpacked[battle_normal_offset]
-                        if valid_charts[4]
-                        else 0,
-                        "hyper": unpacked[battle_hyper_offset]
-                        if valid_charts[5]
-                        else 0,
-                    },
-                },
-                "file": {
-                    "standard": {
-                        "easy": file_handle(unpacked[easy_file_offset])
-                        if valid_charts[0]
-                        else "",
-                        "normal": file_handle(unpacked[normal_file_offset])
-                        if valid_charts[1]
-                        else "",
-                        "hyper": file_handle(unpacked[hyper_file_offset])
-                        if valid_charts[2]
-                        else "",
-                        "ex": file_handle(unpacked[ex_file_offset])
-                        if valid_charts[3]
-                        else "",
-                    },
-                    "battle": {
-                        "normal": file_handle(unpacked[battle_normal_file_offset])
-                        if valid_charts[4]
-                        else "",
-                        "hyper": file_handle(unpacked[battle_hyper_file_offset])
-                        if valid_charts[5]
-                        else "",
-                    },
-                },
+    def scrape_xml(
+        self, xmlfile: Path, songs: List[Dict[str, Any]] = []
+    ) -> List[Dict[str, Any]]:
+        with open(xmlfile, "rb") as xmlhandle:
+            xmldata = xmlhandle.read().decode("shift_jisx0213")
+            root = ET.fromstring(xmldata)
+
+        for music_entry in root.findall("music"):
+            difficulties = [0, 0, 0, 0, 0, 0]
+            filenames = ["", "", "", "", "", ""]
+            diff_map = {
+                "ep": 0,
+                "np": 1,
+                "hp": 2,
+                "op": 3,
+                "bp_n": 4,
+                "bp_h": 5,
             }
+            charts = music_entry.find("charts")
+            if charts is not None:
+                for chart in charts.findall("chart"):
+                    chart_idx = diff_map.get(chart.attrib["idx"])
+                    if chart.find("diff") is not None:
+                        difficulties[chart_idx] = int(chart.find("diff").text)
+                        filenames[
+                            chart_idx
+                        ] = f'{chart.find("folder").text}/{chart.find("filename").text}'
+            songinfo: Dict
+            # Check if song metadata is in this entry
+            if music_entry.find("fw_title") is not None:
+                songinfo = {
+                    "id": int(music_entry.attrib["id"]),
+                    "title": music_entry.find("fw_title").text,
+                    "artist": music_entry.find("fw_artist").text,
+                    "genre": music_entry.find("fw_genre").text,
+                    "comment": music_entry.find("genre").text,
+                    "title_en": music_entry.find("title").text,
+                    "artist_en": music_entry.find("artist").text,
+                    "long_genre": "",
+                    "folder": music_entry.find("folder").text,
+                    "difficulty": {
+                        "standard": {
+                            "easy": difficulties[0],
+                            "normal": difficulties[1],
+                            "hyper": difficulties[2],
+                            "ex": difficulties[3],
+                        },
+                        "battle": {
+                            "normal": difficulties[4],
+                            "hyper": difficulties[5],
+                        },
+                    },
+                    "file": {
+                        "standard": {
+                            "easy": filenames[0],
+                            "normal": filenames[1],
+                            "hyper": filenames[2],
+                            "ex": filenames[3],
+                        },
+                        "battle": {
+                            "normal": filenames[4],
+                            "hyper": filenames[5],
+                        },
+                    },
+                }
+            # It's not here so find the entry at the current song id
+            else:
+                for song in songs:
+                    if song["id"] == int(music_entry.attrib["id"]):
+                        if difficulties is not None:
+                            for diff, i in zip(
+                                ["easy", "normal", "hyper", "ex"], range(4)
+                            ):
+                                song["difficulty"]["standard"][diff] = (
+                                    difficulties[i]
+                                    if difficulties[i]
+                                    else song["difficulty"]["standard"][diff]
+                                )
+                                song["file"]["standard"][diff] = (
+                                    filenames[i]
+                                    if filenames[i]
+                                    else song["file"]["standard"][diff]
+                                )
 
-            if (
-                songinfo["title"] in ["-", "‐"]
-                and songinfo["genre"] in ["-", "‐"]
-                and songinfo["artist"] in ["-", "‐"]
-                and songinfo["comment"] in ["-", "‐"]
-            ):
-                # This is a removed song
-                continue
-
-            if (
-                songinfo["title"] == "ＤＵＭＭＹ"
-                and songinfo["artist"] == "ＤＵＭＭＹ"
-                and songinfo["genre"] == "ＤＵＭＭＹ"
-            ):
-                # This is a song the intern left in
+                            song["difficulty"]["battle"]["normal"] = (
+                                difficulties[4]
+                                if difficulties[4]
+                                else song["difficulty"]["battle"]["normal"]
+                            )
+                            song["difficulty"]["battle"]["hyper"] = (
+                                difficulties[5]
+                                if difficulties[5]
+                                else song["difficulty"]["battle"]["hyper"]
+                            )
+                            song["file"]["battle"]["normal"] = (
+                                filenames[4]
+                                if filenames[4]
+                                else song["file"]["battle"]["normal"]
+                            )
+                            song["file"]["battle"]["hyper"] = (
+                                filenames[5]
+                                if filenames[5]
+                                else song["file"]["battle"]["hyper"]
+                            )
+                        else:
+                            song["genre"] = music_entry.find("fw_genre").text
+                            song["comment"] = music_entry.find("genre").text
+                        break
                 continue
 
             # Fix accent issues with title/artist
@@ -1287,6 +651,1482 @@ class ImportPopn(ImportBase):
             songs.append(songinfo)
 
         return songs
+
+    def scrape(self, infile: str) -> List[Dict[str, Any]]:
+        with open(infile, mode="rb") as myfile:
+            data = myfile.read()
+            myfile.close()
+
+        pe = PEFile(data)
+
+        configurations: List[PopnScrapeConfiguration] = []
+        if self.version == VersionConstants.POPN_MUSIC_TUNE_STREET:
+            # Decoding function for chart masks
+            def available_charts(
+                mask: int,
+            ) -> Tuple[bool, bool, bool, bool, bool, bool]:
+                return (
+                    True,  # Always an easy chart
+                    True,  # Always a normal chart
+                    mask & 0x1000000 > 0,  # Hyper chart bit
+                    mask & 0x2000000 > 0,  # Ex chart bit
+                    True,  # Always a battle normal chart
+                    mask & 0x4000000 > 0,  # Battle hyper chart bit
+                )
+
+            # Based on K39:J:A:A:2011061400
+            configurations.append(
+                PopnScrapeConfiguration(
+                    version="K39:J:A:A:2011061400",
+                    # Normal offset for music DB, size
+                    offset=0x1F68E8,
+                    step=72,
+                    length=1048,
+                    # Offset and step of file DB
+                    file_offset=0x2D6888,
+                    file_step=24,
+                    # Standard lookups
+                    genre_offset=0,
+                    title_offset=1,
+                    artist_offset=2,
+                    comment_offset=3,
+                    english_title_offset=None,
+                    english_artist_offset=None,
+                    extended_genre_offset=None,
+                    charts_offset=6,
+                    folder_offset=7,
+                    # Offsets for normal chart difficulties
+                    easy_offset=12,
+                    normal_offset=10,
+                    hyper_offset=11,
+                    ex_offset=13,
+                    # Offsets for battle chart difficulties
+                    battle_normal_offset=14,
+                    battle_hyper_offset=15,
+                    # Offsets into which offset to seek to for file lookups
+                    easy_file_offset=18,
+                    normal_file_offset=16,
+                    hyper_file_offset=17,
+                    ex_file_offset=19,
+                    battle_normal_file_offset=20,
+                    battle_hyper_file_offset=21,
+                    packedfmt=(
+                        "<"
+                        "I"  # Genre
+                        "I"  # Title
+                        "I"  # Artist
+                        "I"  # Comment
+                        "H"  # ??
+                        "H"  # ??
+                        "I"  # Available charts mask
+                        "I"  # Folder
+                        "I"  # Event flags?
+                        "B"  # Event flags?
+                        "B"  # Normal difficulty
+                        "B"  # Hyper difficulty
+                        "B"  # Easy difficulty
+                        "B"  # EX difficulty
+                        "B"  # Battle normal difficulty
+                        "B"  # Battle hyper difficulty
+                        "x"  # ??
+                        "x"  # ??
+                        "x"  # ??
+                        "H"  # Normal chart pointer
+                        "H"  # Hyper chart pointer
+                        "H"  # Easy chart pointer
+                        "H"  # EX chart pointer
+                        "H"  # Battle normal pointer
+                        "H"  # Battle hyper pointer
+                        "xxxxxxxxxxxxxxxxxx"
+                    ),
+                    # Offsets into file DB for finding file and folder.
+                    file_folder_offset=0,
+                    file_name_offset=1,
+                    filefmt="<" "I" "I" "I" "I" "I" "I",  # Folder  # Filename
+                    available_charts=available_charts,
+                )
+            )
+
+        elif self.version == VersionConstants.POPN_MUSIC_FANTASIA:
+            # Decoding function for chart masks
+            def available_charts(
+                mask: int,
+            ) -> Tuple[bool, bool, bool, bool, bool, bool]:
+                return (
+                    True,  # Always an easy chart
+                    True,  # Always a normal chart
+                    mask & 0x1000000 > 0,  # Hyper chart bit
+                    mask & 0x2000000 > 0,  # Ex chart bit
+                    True,  # Always a battle normal chart
+                    mask & 0x4000000 > 0,  # Battle hyper chart bit
+                )
+
+            # Based on L39:J:A:A:2011121400
+            configurations.append(
+                PopnScrapeConfiguration(
+                    version="L39:J:A:A:2011121400",
+                    # Normal offset for music DB, size
+                    offset=0x1797D0,
+                    step=160,
+                    length=1116,
+                    # Offset and step of file DB
+                    file_offset=0x238AD0,
+                    file_step=24,
+                    # Standard lookups
+                    genre_offset=0,
+                    title_offset=1,
+                    artist_offset=2,
+                    comment_offset=3,
+                    english_title_offset=None,
+                    english_artist_offset=None,
+                    extended_genre_offset=None,
+                    charts_offset=6,
+                    folder_offset=7,
+                    # Offsets for normal chart difficulties
+                    easy_offset=12,
+                    normal_offset=10,
+                    hyper_offset=11,
+                    ex_offset=13,
+                    # Offsets for battle chart difficulties
+                    battle_normal_offset=14,
+                    battle_hyper_offset=15,
+                    # Offsets into which offset to seek to for file lookups
+                    easy_file_offset=18,
+                    normal_file_offset=16,
+                    hyper_file_offset=17,
+                    ex_file_offset=19,
+                    battle_normal_file_offset=20,
+                    battle_hyper_file_offset=21,
+                    packedfmt=(
+                        "<"
+                        "I"  # Genre
+                        "I"  # Title
+                        "I"  # Artist
+                        "I"  # Comment
+                        "H"  # ??
+                        "H"  # ??
+                        "I"  # Available charts mask
+                        "I"  # Folder
+                        "I"  # Event flags?
+                        "B"  # Event flags?
+                        "B"  # Normal difficulty
+                        "B"  # Hyper difficulty
+                        "B"  # Easy difficulty
+                        "B"  # EX difficulty
+                        "B"  # Battle normal difficulty
+                        "B"  # Battle hyper difficulty
+                        "x"  # ??
+                        "x"  # ??
+                        "x"  # ??
+                        "H"  # Normal chart pointer
+                        "H"  # Hyper chart pointer
+                        "H"  # Easy chart pointer
+                        "H"  # EX chart pointer
+                        "H"  # Battle normal pointer
+                        "H"  # Battle hyper pointer
+                        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    ),
+                    # Offsets into file DB for finding file and folder.
+                    file_folder_offset=0,
+                    file_name_offset=1,
+                    filefmt="<" "I" "I" "I" "I" "I" "I",  # Folder  # Filename
+                    available_charts=available_charts,
+                )
+            )
+
+            # Based on L39:J:A:A:2012091900
+            configurations.append(
+                PopnScrapeConfiguration(
+                    version="L39:J:A:A:2012091900",
+                    # Normal offset for music DB, size
+                    offset=0x1AE240,
+                    step=160,
+                    length=1122,
+                    # Offset and step of file DB
+                    file_offset=0x273768,
+                    file_step=24,
+                    # Standard lookups
+                    genre_offset=0,
+                    title_offset=1,
+                    artist_offset=2,
+                    comment_offset=3,
+                    english_title_offset=None,
+                    english_artist_offset=None,
+                    extended_genre_offset=None,
+                    charts_offset=6,
+                    folder_offset=7,
+                    # Offsets for normal chart difficulties
+                    easy_offset=12,
+                    normal_offset=10,
+                    hyper_offset=11,
+                    ex_offset=13,
+                    # Offsets for battle chart difficulties
+                    battle_normal_offset=14,
+                    battle_hyper_offset=15,
+                    # Offsets into which offset to seek to for file lookups
+                    easy_file_offset=18,
+                    normal_file_offset=16,
+                    hyper_file_offset=17,
+                    ex_file_offset=19,
+                    battle_normal_file_offset=20,
+                    battle_hyper_file_offset=21,
+                    packedfmt=(
+                        "<"
+                        "I"  # Genre
+                        "I"  # Title
+                        "I"  # Artist
+                        "I"  # Comment
+                        "H"  # ??
+                        "H"  # ??
+                        "I"  # Available charts mask
+                        "I"  # Folder
+                        "I"  # Event flags?
+                        "B"  # Event flags?
+                        "B"  # Normal difficulty
+                        "B"  # Hyper difficulty
+                        "B"  # Easy difficulty
+                        "B"  # EX difficulty
+                        "B"  # Battle normal difficulty
+                        "B"  # Battle hyper difficulty
+                        "x"  # ??
+                        "x"  # ??
+                        "x"  # ??
+                        "H"  # Normal chart pointer
+                        "H"  # Hyper chart pointer
+                        "H"  # Easy chart pointer
+                        "H"  # EX chart pointer
+                        "H"  # Battle normal pointer
+                        "H"  # Battle hyper pointer
+                        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    ),
+                    # Offsets into file DB for finding file and folder.
+                    file_folder_offset=0,
+                    file_name_offset=1,
+                    filefmt="<" "I" "I" "I" "I" "I" "I",  # Folder  # Filename
+                    available_charts=available_charts,
+                )
+            )
+        elif self.version == VersionConstants.POPN_MUSIC_SUNNY_PARK:
+            # Decoding function for chart masks
+            def available_charts(
+                mask: int,
+            ) -> Tuple[bool, bool, bool, bool, bool, bool]:
+                return (
+                    mask & 0x0080000 > 0,  # Easy chart bit
+                    True,  # Always a normal chart
+                    mask & 0x1000000 > 0,  # Hyper chart bit
+                    mask & 0x2000000 > 0,  # Ex chart bit
+                    True,  # Always a battle normal chart
+                    mask & 0x4000000 > 0,  # Battle hyper chart bit
+                )
+
+            # Based on M39:J:A:A:2012120900
+            configurations.append(
+                PopnScrapeConfiguration(
+                    version="M39:J:A:A:2012120900",
+                    # Normal offset for music DB, size
+                    offset=0x16C880,
+                    step=164,
+                    length=1184,
+                    # Offset and step of file DB
+                    file_offset=0x2399B8,
+                    file_step=28,
+                    # Standard lookups
+                    genre_offset=0,
+                    title_offset=1,
+                    artist_offset=2,
+                    comment_offset=3,
+                    english_title_offset=4,
+                    english_artist_offset=5,
+                    extended_genre_offset=6,
+                    charts_offset=9,
+                    folder_offset=10,
+                    # Offsets for normal chart difficulties
+                    easy_offset=13,
+                    normal_offset=14,
+                    hyper_offset=15,
+                    ex_offset=16,
+                    # Offsets for battle chart difficulties
+                    battle_normal_offset=17,
+                    battle_hyper_offset=18,
+                    # Offsets into which offset to seek to for file lookups
+                    easy_file_offset=19,
+                    normal_file_offset=20,
+                    hyper_file_offset=21,
+                    ex_file_offset=22,
+                    battle_normal_file_offset=21,
+                    battle_hyper_file_offset=22,
+                    packedfmt=(
+                        "<"
+                        "I"  # Genre
+                        "I"  # Title
+                        "I"  # Artist
+                        "I"  # Comment
+                        "I"  # English Title
+                        "I"  # English Artist
+                        "I"  # Extended genre?
+                        "H"  # ??
+                        "H"  # ??
+                        "I"  # Available charts mask
+                        "I"  # Folder
+                        "I"  # Event unlocks?
+                        "H"  # Event unlocks?
+                        "B"  # Easy difficulty
+                        "B"  # Normal difficulty
+                        "B"  # Hyper difficulty
+                        "B"  # EX difficulty
+                        "B"  # Battle normal difficulty
+                        "B"  # Battle hyper difficulty
+                        "H"  # Easy chart pointer
+                        "H"  # Normal chart pointer
+                        "H"  # Hyper chart pointer
+                        "H"  # EX chart pointer
+                        "H"  # Battle normal pointer
+                        "H"  # Battle hyper pointer
+                        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    ),
+                    # Offsets into file DB for finding file and folder.
+                    file_folder_offset=0,
+                    file_name_offset=1,
+                    filefmt="<" "I" "I" "I" "I" "I" "I" "I",  # Folder  # Filename
+                    available_charts=available_charts,
+                )
+            )
+
+            # Based on M39:J:A:A:2012121200
+            configurations.append(
+                PopnScrapeConfiguration(
+                    version="M39:J:A:A:2012121200",
+                    # Normal offset for music DB, size
+                    offset=0x16C880,
+                    step=164,
+                    length=1183,
+                    # Offset and step of file DB
+                    file_offset=0x2399B8,
+                    file_step=28,
+                    # Standard lookups
+                    genre_offset=0,
+                    title_offset=1,
+                    artist_offset=2,
+                    comment_offset=3,
+                    english_title_offset=4,
+                    english_artist_offset=5,
+                    extended_genre_offset=6,
+                    charts_offset=9,
+                    folder_offset=10,
+                    # Offsets for normal chart difficulties
+                    easy_offset=13,
+                    normal_offset=14,
+                    hyper_offset=15,
+                    ex_offset=16,
+                    # Offsets for battle chart difficulties
+                    battle_normal_offset=17,
+                    battle_hyper_offset=18,
+                    # Offsets into which offset to seek to for file lookups
+                    easy_file_offset=19,
+                    normal_file_offset=20,
+                    hyper_file_offset=21,
+                    ex_file_offset=22,
+                    battle_normal_file_offset=21,
+                    battle_hyper_file_offset=22,
+                    packedfmt=(
+                        "<"
+                        "I"  # Genre
+                        "I"  # Title
+                        "I"  # Artist
+                        "I"  # Comment
+                        "I"  # English Title
+                        "I"  # English Artist
+                        "I"  # Extended genre?
+                        "H"  # ??
+                        "H"  # ??
+                        "I"  # Available charts mask
+                        "I"  # Folder
+                        "I"  # Event unlocks?
+                        "H"  # Event unlocks?
+                        "B"  # Easy difficulty
+                        "B"  # Normal difficulty
+                        "B"  # Hyper difficulty
+                        "B"  # EX difficulty
+                        "B"  # Battle normal difficulty
+                        "B"  # Battle hyper difficulty
+                        "H"  # Easy chart pointer
+                        "H"  # Normal chart pointer
+                        "H"  # Hyper chart pointer
+                        "H"  # EX chart pointer
+                        "H"  # Battle normal pointer
+                        "H"  # Battle hyper pointer
+                        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    ),
+                    # Offsets into file DB for finding file and folder.
+                    file_folder_offset=0,
+                    file_name_offset=1,
+                    filefmt="<" "I" "I" "I" "I" "I" "I" "I",  # Folder  # Filename
+                    available_charts=available_charts,
+                )
+            )
+
+            # Based on M39:J:A:A:2013011500
+            configurations.append(
+                PopnScrapeConfiguration(
+                    version="M39:J:A:A:2013011500",
+                    # Normal offset for music DB, size
+                    offset=0x170ED8,
+                    step=164,
+                    length=1183,
+                    # Offset and step of file DB
+                    file_offset=0x23EFC0,
+                    file_step=28,
+                    # Standard lookups
+                    genre_offset=0,
+                    title_offset=1,
+                    artist_offset=2,
+                    comment_offset=3,
+                    english_title_offset=4,
+                    english_artist_offset=5,
+                    extended_genre_offset=6,
+                    charts_offset=9,
+                    folder_offset=10,
+                    # Offsets for normal chart difficulties
+                    easy_offset=13,
+                    normal_offset=14,
+                    hyper_offset=15,
+                    ex_offset=16,
+                    # Offsets for battle chart difficulties
+                    battle_normal_offset=17,
+                    battle_hyper_offset=18,
+                    # Offsets into which offset to seek to for file lookups
+                    easy_file_offset=19,
+                    normal_file_offset=20,
+                    hyper_file_offset=21,
+                    ex_file_offset=22,
+                    battle_normal_file_offset=21,
+                    battle_hyper_file_offset=22,
+                    packedfmt=(
+                        "<"
+                        "I"  # Genre
+                        "I"  # Title
+                        "I"  # Artist
+                        "I"  # Comment
+                        "I"  # English Title
+                        "I"  # English Artist
+                        "I"  # Extended genre?
+                        "H"  # ??
+                        "H"  # ??
+                        "I"  # Available charts mask
+                        "I"  # Folder
+                        "I"  # Event unlocks?
+                        "H"  # Event unlocks?
+                        "B"  # Easy difficulty
+                        "B"  # Normal difficulty
+                        "B"  # Hyper difficulty
+                        "B"  # EX difficulty
+                        "B"  # Battle normal difficulty
+                        "B"  # Battle hyper difficulty
+                        "H"  # Easy chart pointer
+                        "H"  # Normal chart pointer
+                        "H"  # Hyper chart pointer
+                        "H"  # EX chart pointer
+                        "H"  # Battle normal pointer
+                        "H"  # Battle hyper pointer
+                        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    ),
+                    # Offsets into file DB for finding file and folder.
+                    file_folder_offset=0,
+                    file_name_offset=1,
+                    filefmt="<" "I" "I" "I" "I" "I" "I" "I",  # Folder  # Filename
+                    available_charts=available_charts,
+                )
+            )
+
+            # Based on M39:J:A:A:2014061900
+            configurations.append(
+                PopnScrapeConfiguration(
+                    version="M39:J:A:A:2014061900",
+                    # Normal offset for music DB, size
+                    offset=0x1FB640,
+                    step=164,
+                    length=1280,
+                    # Offset and step of file DB
+                    file_offset=0x2E0D20,
+                    file_step=28,
+                    # Standard lookups
+                    genre_offset=0,
+                    title_offset=1,
+                    artist_offset=2,
+                    comment_offset=3,
+                    english_title_offset=4,
+                    english_artist_offset=5,
+                    extended_genre_offset=6,
+                    charts_offset=9,
+                    folder_offset=10,
+                    # Offsets for normal chart difficulties
+                    easy_offset=13,
+                    normal_offset=14,
+                    hyper_offset=15,
+                    ex_offset=16,
+                    # Offsets for battle chart difficulties
+                    battle_normal_offset=17,
+                    battle_hyper_offset=18,
+                    # Offsets into which offset to seek to for file lookups
+                    easy_file_offset=19,
+                    normal_file_offset=20,
+                    hyper_file_offset=21,
+                    ex_file_offset=22,
+                    battle_normal_file_offset=21,
+                    battle_hyper_file_offset=22,
+                    packedfmt=(
+                        "<"
+                        "I"  # Genre
+                        "I"  # Title
+                        "I"  # Artist
+                        "I"  # Comment
+                        "I"  # English Title
+                        "I"  # English Artist
+                        "I"  # Extended genre?
+                        "H"  # ??
+                        "H"  # ??
+                        "I"  # Available charts mask
+                        "I"  # Folder
+                        "I"  # Event unlocks?
+                        "H"  # Event unlocks?
+                        "B"  # Easy difficulty
+                        "B"  # Normal difficulty
+                        "B"  # Hyper difficulty
+                        "B"  # EX difficulty
+                        "B"  # Battle normal difficulty
+                        "B"  # Battle hyper difficulty
+                        "H"  # Easy chart pointer
+                        "H"  # Normal chart pointer
+                        "H"  # Hyper chart pointer
+                        "H"  # EX chart pointer
+                        "H"  # Battle normal pointer
+                        "H"  # Battle hyper pointer
+                        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    ),
+                    # Offsets into file DB for finding file and folder.
+                    file_folder_offset=0,
+                    file_name_offset=1,
+                    filefmt="<" "I" "I" "I" "I" "I" "I" "I",  # Folder  # Filename
+                    available_charts=available_charts,
+                )
+            )
+        elif self.version == VersionConstants.POPN_MUSIC_LAPISTORIA:
+            # Decoding function for chart masks
+            def available_charts(
+                mask: int,
+            ) -> Tuple[bool, bool, bool, bool, bool, bool]:
+                return (
+                    mask & 0x0080000 > 0,  # Easy chart bit
+                    True,  # Always a normal chart
+                    mask & 0x1000000 > 0,  # Hyper chart bit
+                    mask & 0x2000000 > 0,  # Ex chart bit
+                    True,  # Always a battle normal chart
+                    mask & 0x4000000 > 0,  # Battle hyper chart bit
+                )
+
+            # Based on M39:J:A:A:2015081900
+            configurations.append(
+                PopnScrapeConfiguration(
+                    version="M39:J:A:A:2015081900",
+                    # Normal offset for music DB, size
+                    offset=0x3124B0,
+                    step=160,
+                    length=1423,
+                    # Offset and step of file DB
+                    file_offset=0x472130,
+                    file_step=28,
+                    # Standard lookups
+                    genre_offset=0,
+                    title_offset=1,
+                    artist_offset=2,
+                    comment_offset=3,
+                    english_title_offset=4,
+                    english_artist_offset=5,
+                    extended_genre_offset=None,
+                    charts_offset=8,
+                    folder_offset=9,
+                    # Offsets for normal chart difficulties
+                    easy_offset=12,
+                    normal_offset=13,
+                    hyper_offset=14,
+                    ex_offset=15,
+                    # Offsets for battle chart difficulties
+                    battle_normal_offset=16,
+                    battle_hyper_offset=17,
+                    # Offsets into which offset to seek to for file lookups
+                    easy_file_offset=18,
+                    normal_file_offset=19,
+                    hyper_file_offset=20,
+                    ex_file_offset=21,
+                    battle_normal_file_offset=22,
+                    battle_hyper_file_offset=23,
+                    packedfmt=(
+                        "<"
+                        "I"  # Genre
+                        "I"  # Title
+                        "I"  # Artist
+                        "I"  # Comment
+                        "I"  # English Title
+                        "I"  # English Artist
+                        "H"  # ??
+                        "H"  # ??
+                        "I"  # Available charts mask
+                        "I"  # Folder
+                        "I"  # Event unlocks?
+                        "H"  # Event unlocks?
+                        "B"  # Easy difficulty
+                        "B"  # Normal difficulty
+                        "B"  # Hyper difficulty
+                        "B"  # EX difficulty
+                        "B"  # Battle normal difficulty
+                        "B"  # Battle hyper difficulty
+                        "H"  # Easy chart pointer
+                        "H"  # Normal chart pointer
+                        "H"  # Hyper chart pointer
+                        "H"  # EX chart pointer
+                        "H"  # Battle normal pointer
+                        "H"  # Battle hyper pointer
+                        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    ),
+                    # Offsets into file DB for finding file and folder.
+                    file_folder_offset=0,
+                    file_name_offset=1,
+                    filefmt="<" "I" "I" "I" "I" "I" "I" "I",  # Folder  # Filename
+                    available_charts=available_charts,
+                )
+            )
+        elif self.version == VersionConstants.POPN_MUSIC_ECLALE:
+            # Decoding function for chart masks
+            def available_charts(
+                mask: int,
+            ) -> Tuple[bool, bool, bool, bool, bool, bool]:
+                return (
+                    mask & 0x0080000 > 0,  # Easy chart bit
+                    True,  # Always a normal chart
+                    mask & 0x1000000 > 0,  # Hyper chart bit
+                    mask & 0x2000000 > 0,  # Ex chart bit
+                    True,  # Always a battle normal chart
+                    mask & 0x4000000 > 0,  # Battle hyper chart bit
+                )
+
+            # Based on M39:J:A:A:2016100500
+            configurations.append(
+                PopnScrapeConfiguration(
+                    version="M39:J:A:A:2016100500",
+                    # Normal offset for music DB, size
+                    offset=0x2DE5C8,
+                    step=160,
+                    length=1551,
+                    # Offset and step of file DB
+                    file_offset=0x2D1948,
+                    file_step=32,
+                    # Standard lookups
+                    genre_offset=0,
+                    title_offset=1,
+                    artist_offset=2,
+                    comment_offset=3,
+                    english_title_offset=4,
+                    english_artist_offset=5,
+                    extended_genre_offset=None,
+                    charts_offset=8,
+                    folder_offset=9,
+                    # Offsets for normal chart difficulties
+                    easy_offset=12,
+                    normal_offset=13,
+                    hyper_offset=14,
+                    ex_offset=15,
+                    # Offsets for battle chart difficulties
+                    battle_normal_offset=16,
+                    battle_hyper_offset=17,
+                    # Offsets into which offset to seek to for file lookups
+                    easy_file_offset=18,
+                    normal_file_offset=19,
+                    hyper_file_offset=20,
+                    ex_file_offset=21,
+                    battle_normal_file_offset=22,
+                    battle_hyper_file_offset=23,
+                    packedfmt=(
+                        "<"
+                        "I"  # Genre
+                        "I"  # Title
+                        "I"  # Artist
+                        "I"  # Comment
+                        "I"  # English Title
+                        "I"  # English Artist
+                        "H"  # ??
+                        "H"  # ??
+                        "I"  # Available charts mask
+                        "I"  # Folder
+                        "I"  # Event unlocks?
+                        "H"  # Event unlocks?
+                        "B"  # Easy difficulty
+                        "B"  # Normal difficulty
+                        "B"  # Hyper difficulty
+                        "B"  # EX difficulty
+                        "B"  # Battle normal difficulty
+                        "B"  # Battle hyper difficulty
+                        "H"  # Easy chart pointer
+                        "H"  # Normal chart pointer
+                        "H"  # Hyper chart pointer
+                        "H"  # EX chart pointer
+                        "H"  # Battle normal pointer
+                        "H"  # Battle hyper pointer
+                        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    ),
+                    # Offsets into file DB for finding file and folder.
+                    file_folder_offset=0,
+                    file_name_offset=1,
+                    filefmt="<" "I" "I" "I" "I" "I" "I" "I" "I",  # Folder  # Filename
+                    available_charts=available_charts,
+                )
+            )
+        elif self.version == VersionConstants.POPN_MUSIC_USANEKO or self.version == (
+            VersionConstants.POPN_MUSIC_USANEKO + DBConstants.OMNIMIX_VERSION_BUMP
+        ):
+            # Decoding function for chart masks
+            def available_charts(
+                mask: int,
+            ) -> Tuple[bool, bool, bool, bool, bool, bool]:
+                return (
+                    mask & 0x0080000 > 0,  # Easy chart bit
+                    True,  # Always a normal chart
+                    mask & 0x1000000 > 0,  # Hyper chart bit
+                    mask & 0x2000000 > 0,  # Ex chart bit
+                    True,  # Always a battle normal chart
+                    mask & 0x4000000 > 0,  # Battle hyper chart bit
+                )
+
+            # Based on M39:J:A:A:2018082100
+            configurations.append(
+                PopnScrapeConfiguration(
+                    version="M39:J:A:A:2018082100",
+                    # Normal offset for music DB, size
+                    offset=0x299410,
+                    step=172,
+                    length=1704,
+                    # Offset and step of file DB
+                    file_offset=0x28B108,
+                    file_step=32,
+                    # Standard lookups
+                    genre_offset=0,
+                    title_offset=1,
+                    artist_offset=2,
+                    comment_offset=3,
+                    english_title_offset=4,
+                    english_artist_offset=5,
+                    extended_genre_offset=None,
+                    charts_offset=8,
+                    folder_offset=9,
+                    # Offsets for normal chart difficulties
+                    easy_offset=12,
+                    normal_offset=13,
+                    hyper_offset=14,
+                    ex_offset=15,
+                    # Offsets for battle chart difficulties
+                    battle_normal_offset=16,
+                    battle_hyper_offset=17,
+                    # Offsets into which offset to seek to for file lookups
+                    easy_file_offset=18,
+                    normal_file_offset=19,
+                    hyper_file_offset=20,
+                    ex_file_offset=21,
+                    battle_normal_file_offset=22,
+                    battle_hyper_file_offset=23,
+                    packedfmt=(
+                        "<"
+                        "I"  # Genre
+                        "I"  # Title
+                        "I"  # Artist
+                        "I"  # Comment
+                        "I"  # English Title
+                        "I"  # English Artist
+                        "H"  # ??
+                        "H"  # ??
+                        "I"  # Available charts mask
+                        "I"  # Folder
+                        "I"  # Event unlocks?
+                        "I"  # Event unlocks?
+                        "B"  # Easy difficulty
+                        "B"  # Normal difficulty
+                        "B"  # Hyper difficulty
+                        "B"  # EX difficulty
+                        "B"  # Battle normal difficulty
+                        "B"  # Battle hyper difficulty
+                        "xx"  # Unknown pointer
+                        "H"  # Easy chart pointer
+                        "H"  # Normal chart pointer
+                        "H"  # Hyper chart pointer
+                        "H"  # EX chart pointer
+                        "H"  # Battle normal pointer
+                        "H"  # Battle hyper pointer
+                        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    ),
+                    # Offsets into file DB for finding file and folder.
+                    file_folder_offset=0,
+                    file_name_offset=1,
+                    filefmt="<" "I" "I" "I" "I" "I" "I" "I" "I",  # Folder  # Filename
+                    available_charts=available_charts,
+                )
+            )
+
+            # Based on M39:J:A:A:2018101500
+            configurations.append(
+                PopnScrapeConfiguration(
+                    version="M39:J:A:A:2018101500",
+                    # Normal offset for music DB, size
+                    offset=0x299210,
+                    step=172,
+                    length=1704,
+                    # Offset and step of file DB
+                    file_offset=0x28AF08,
+                    file_step=32,
+                    # Standard lookups
+                    genre_offset=0,
+                    title_offset=1,
+                    artist_offset=2,
+                    comment_offset=3,
+                    english_title_offset=4,
+                    english_artist_offset=5,
+                    extended_genre_offset=None,
+                    charts_offset=8,
+                    folder_offset=9,
+                    # Offsets for normal chart difficulties
+                    easy_offset=12,
+                    normal_offset=13,
+                    hyper_offset=14,
+                    ex_offset=15,
+                    # Offsets for battle chart difficulties
+                    battle_normal_offset=16,
+                    battle_hyper_offset=17,
+                    # Offsets into which offset to seek to for file lookups
+                    easy_file_offset=18,
+                    normal_file_offset=19,
+                    hyper_file_offset=20,
+                    ex_file_offset=21,
+                    battle_normal_file_offset=22,
+                    battle_hyper_file_offset=23,
+                    packedfmt=(
+                        "<"
+                        "I"  # Genre
+                        "I"  # Title
+                        "I"  # Artist
+                        "I"  # Comment
+                        "I"  # English Title
+                        "I"  # English Artist
+                        "H"  # ??
+                        "H"  # ??
+                        "I"  # Available charts mask
+                        "I"  # Folder
+                        "I"  # Event unlocks?
+                        "I"  # Event unlocks?
+                        "B"  # Easy difficulty
+                        "B"  # Normal difficulty
+                        "B"  # Hyper difficulty
+                        "B"  # EX difficulty
+                        "B"  # Battle normal difficulty
+                        "B"  # Battle hyper difficulty
+                        "xx"  # Unknown pointer
+                        "H"  # Easy chart pointer
+                        "H"  # Normal chart pointer
+                        "H"  # Hyper chart pointer
+                        "H"  # EX chart pointer
+                        "H"  # Battle normal pointer
+                        "H"  # Battle hyper pointer
+                        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    ),
+                    # Offsets into file DB for finding file and folder.
+                    file_folder_offset=0,
+                    file_name_offset=1,
+                    filefmt="<" "I" "I" "I" "I" "I" "I" "I" "I",  # Folder  # Filename
+                    available_charts=available_charts,
+                )
+            )
+        elif self.version == VersionConstants.POPN_MUSIC_PEACE or self.version == (
+            VersionConstants.POPN_MUSIC_PEACE + DBConstants.OMNIMIX_VERSION_BUMP
+        ):
+            # Decoding function for chart masks
+            def available_charts(
+                mask: int,
+            ) -> Tuple[bool, bool, bool, bool, bool, bool]:
+                return (
+                    mask & 0x0080000 > 0,  # Easy chart bit
+                    True,  # Always a normal chart
+                    mask & 0x1000000 > 0,  # Hyper chart bit
+                    mask & 0x2000000 > 0,  # Ex chart bit
+                    True,  # Always a battle normal chart
+                    mask & 0x4000000 > 0,  # Battle hyper chart bit
+                )
+
+            # Based on M39:J:A:A:2019042300
+            configurations.append(
+                PopnScrapeConfiguration(
+                    version="M39:J:A:A:2019042300",
+                    # Normal offset for music DB, size
+                    offset=0x2B3840,
+                    step=172,
+                    length=1780,
+                    # Offset and step of file DB
+                    file_offset=0x2A48F8,
+                    file_step=32,
+                    # Standard lookups
+                    genre_offset=0,
+                    title_offset=1,
+                    artist_offset=2,
+                    comment_offset=3,
+                    english_title_offset=4,
+                    english_artist_offset=5,
+                    extended_genre_offset=None,
+                    charts_offset=8,
+                    folder_offset=9,
+                    # Offsets for normal chart difficulties
+                    easy_offset=12,
+                    normal_offset=13,
+                    hyper_offset=14,
+                    ex_offset=15,
+                    # Offsets for battle chart difficulties
+                    battle_normal_offset=16,
+                    battle_hyper_offset=17,
+                    # Offsets into which offset to seek to for file lookups
+                    easy_file_offset=18,
+                    normal_file_offset=19,
+                    hyper_file_offset=20,
+                    ex_file_offset=21,
+                    battle_normal_file_offset=22,
+                    battle_hyper_file_offset=23,
+                    packedfmt=(
+                        "<"
+                        "I"  # Genre
+                        "I"  # Title
+                        "I"  # Artist
+                        "I"  # Comment
+                        "I"  # English Title
+                        "I"  # English Artist
+                        "H"  # ??
+                        "H"  # ??
+                        "I"  # Available charts mask
+                        "I"  # Folder
+                        "I"  # Event unlocks?
+                        "I"  # Event unlocks?
+                        "B"  # Easy difficulty
+                        "B"  # Normal difficulty
+                        "B"  # Hyper difficulty
+                        "B"  # EX difficulty
+                        "B"  # Battle normal difficulty
+                        "B"  # Battle hyper difficulty
+                        "xx"  # Unknown pointer
+                        "H"  # Easy chart pointer
+                        "H"  # Normal chart pointer
+                        "H"  # Hyper chart pointer
+                        "H"  # EX chart pointer
+                        "H"  # Battle normal pointer
+                        "H"  # Battle hyper pointer
+                        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    ),
+                    # Offsets into file DB for finding file and folder.
+                    file_folder_offset=0,
+                    file_name_offset=1,
+                    filefmt="<" "I" "I" "I" "I" "I" "I" "I" "I",  # Folder  # Filename
+                    available_charts=available_charts,
+                )
+            )
+
+            # Based on M39:J:A:A:2020092800
+            configurations.append(
+                PopnScrapeConfiguration(
+                    version="M39:J:A:A:2020092800",
+                    # Normal offset for music DB, size
+                    offset=0x2C7C78,
+                    step=172,
+                    length=1877,
+                    # Offset and step of file DB
+                    file_offset=0x2B8010,
+                    file_step=32,
+                    # Standard lookups
+                    genre_offset=0,
+                    title_offset=1,
+                    artist_offset=2,
+                    comment_offset=3,
+                    english_title_offset=4,
+                    english_artist_offset=5,
+                    extended_genre_offset=None,
+                    charts_offset=8,
+                    folder_offset=9,
+                    # Offsets for normal chart difficulties
+                    easy_offset=12,
+                    normal_offset=13,
+                    hyper_offset=14,
+                    ex_offset=15,
+                    # Offsets for battle chart difficulties
+                    battle_normal_offset=16,
+                    battle_hyper_offset=17,
+                    # Offsets into which offset to seek to for file lookups
+                    easy_file_offset=18,
+                    normal_file_offset=19,
+                    hyper_file_offset=20,
+                    ex_file_offset=21,
+                    battle_normal_file_offset=22,
+                    battle_hyper_file_offset=23,
+                    packedfmt=(
+                        "<"
+                        "I"  # Genre
+                        "I"  # Title
+                        "I"  # Artist
+                        "I"  # Comment
+                        "I"  # English Title
+                        "I"  # English Artist
+                        "H"  # ??
+                        "H"  # ??
+                        "I"  # Available charts mask
+                        "I"  # Folder
+                        "I"  # Event unlocks?
+                        "I"  # Event unlocks?
+                        "B"  # Easy difficulty
+                        "B"  # Normal difficulty
+                        "B"  # Hyper difficulty
+                        "B"  # EX difficulty
+                        "B"  # Battle normal difficulty
+                        "B"  # Battle hyper difficulty
+                        "xx"  # Unknown pointer
+                        "H"  # Easy chart pointer
+                        "H"  # Normal chart pointer
+                        "H"  # Hyper chart pointer
+                        "H"  # EX chart pointer
+                        "H"  # Battle normal pointer
+                        "H"  # Battle hyper pointer
+                        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    ),
+                    # Offsets into file DB for finding file and folder.
+                    file_folder_offset=0,
+                    file_name_offset=1,
+                    filefmt="<" "I" "I" "I" "I" "I" "I" "I" "I",  # Folder  # Filename
+                    available_charts=available_charts,
+                )
+            )
+        elif (
+            self.version == VersionConstants.POPN_MUSIC_KAIMEI_RIDDLES
+            or self.version
+            == (
+                VersionConstants.POPN_MUSIC_KAIMEI_RIDDLES
+                + DBConstants.OMNIMIX_VERSION_BUMP
+            )
+        ):
+            # Decoding function for chart masks
+            def available_charts(
+                mask: int,
+            ) -> Tuple[bool, bool, bool, bool, bool, bool]:
+                return (
+                    mask & 0x0080000 > 0,  # Easy chart bit
+                    True,  # Always a normal chart
+                    mask & 0x1000000 > 0,  # Hyper chart bit
+                    mask & 0x2000000 > 0,  # Ex chart bit
+                    True,  # Always a battle normal chart
+                    mask & 0x4000000 > 0,  # Battle hyper chart bit
+                )
+
+            # Based on M39:J:A:A:2021042600
+            configurations.append(
+                PopnScrapeConfiguration(
+                    version="M39:J:A:A:2021042600",
+                    # Normal offset for music DB, size
+                    offset=0x2D0628,
+                    step=172,
+                    length=1945,
+                    # Offset and step of file DB
+                    file_offset=0x2C00C0,
+                    file_step=32,
+                    # Standard lookups
+                    genre_offset=0,
+                    title_offset=1,
+                    artist_offset=2,
+                    comment_offset=3,
+                    english_title_offset=4,
+                    english_artist_offset=5,
+                    extended_genre_offset=None,
+                    charts_offset=8,
+                    folder_offset=9,
+                    # Offsets for normal chart difficulties
+                    easy_offset=12,
+                    normal_offset=13,
+                    hyper_offset=14,
+                    ex_offset=15,
+                    # Offsets for battle chart difficulties
+                    battle_normal_offset=16,
+                    battle_hyper_offset=17,
+                    # Offsets into which offset to seek to for file lookups
+                    easy_file_offset=18,
+                    normal_file_offset=19,
+                    hyper_file_offset=20,
+                    ex_file_offset=21,
+                    battle_normal_file_offset=22,
+                    battle_hyper_file_offset=23,
+                    packedfmt=(
+                        "<"
+                        "I"  # Genre
+                        "I"  # Title
+                        "I"  # Artist
+                        "I"  # Comment
+                        "I"  # English Title
+                        "I"  # English Artist
+                        "H"  # ??
+                        "H"  # ??
+                        "I"  # Available charts mask
+                        "I"  # Folder
+                        "I"  # Event unlocks?
+                        "I"  # Event unlocks?
+                        "B"  # Easy difficulty
+                        "B"  # Normal difficulty
+                        "B"  # Hyper difficulty
+                        "B"  # EX difficulty
+                        "B"  # Battle normal difficulty
+                        "B"  # Battle hyper difficulty
+                        "xx"  # Unknown pointer
+                        "H"  # Easy chart pointer
+                        "H"  # Normal chart pointer
+                        "H"  # Hyper chart pointer
+                        "H"  # EX chart pointer
+                        "H"  # Battle normal pointer
+                        "H"  # Battle hyper pointer
+                        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    ),
+                    # Offsets into file DB for finding file and folder.
+                    file_folder_offset=0,
+                    file_name_offset=1,
+                    filefmt="<" "I" "I" "I" "I" "I" "I" "I" "I",  # Folder  # Filename
+                    available_charts=available_charts,
+                )
+            )
+
+            # Based on M39:J:A:A:2022042500
+            configurations.append(
+                PopnScrapeConfiguration(
+                    version="M39:J:A:A:2022042500",
+                    # Normal offset for music DB, size
+                    offset=0x2DB398,
+                    step=172,
+                    length=2012,
+                    # Offset and step of file DB
+                    file_offset=0x2CA510,
+                    file_step=32,
+                    # Standard lookups
+                    genre_offset=0,
+                    title_offset=1,
+                    artist_offset=2,
+                    comment_offset=3,
+                    english_title_offset=4,
+                    english_artist_offset=5,
+                    extended_genre_offset=None,
+                    charts_offset=8,
+                    folder_offset=9,
+                    # Offsets for normal chart difficulties
+                    easy_offset=12,
+                    normal_offset=13,
+                    hyper_offset=14,
+                    ex_offset=15,
+                    # Offsets for battle chart difficulties
+                    battle_normal_offset=16,
+                    battle_hyper_offset=17,
+                    # Offsets into which offset to seek to for file lookups
+                    easy_file_offset=18,
+                    normal_file_offset=19,
+                    hyper_file_offset=20,
+                    ex_file_offset=21,
+                    battle_normal_file_offset=22,
+                    battle_hyper_file_offset=23,
+                    packedfmt=(
+                        "<"
+                        "I"  # Genre
+                        "I"  # Title
+                        "I"  # Artist
+                        "I"  # Comment
+                        "I"  # English Title
+                        "I"  # English Artist
+                        "H"  # ??
+                        "H"  # ??
+                        "I"  # Available charts mask
+                        "I"  # Folder
+                        "I"  # Event unlocks?
+                        "I"  # Event unlocks?
+                        "B"  # Easy difficulty
+                        "B"  # Normal difficulty
+                        "B"  # Hyper difficulty
+                        "B"  # EX difficulty
+                        "B"  # Battle normal difficulty
+                        "B"  # Battle hyper difficulty
+                        "xx"  # Unknown pointer
+                        "H"  # Easy chart pointer
+                        "H"  # Normal chart pointer
+                        "H"  # Hyper chart pointer
+                        "H"  # EX chart pointer
+                        "H"  # Battle normal pointer
+                        "H"  # Battle hyper pointer
+                        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    ),
+                    # Offsets into file DB for finding file and folder.
+                    file_folder_offset=0,
+                    file_name_offset=1,
+                    filefmt="<" "I" "I" "I" "I" "I" "I" "I" "I",  # Folder  # Filename
+                    available_charts=available_charts,
+                )
+            )
+
+            # Based on M39:J:A:A:2022061300
+            configurations.append(
+                PopnScrapeConfiguration(
+                    version="M39:J:A:A:2022061300",
+                    # Normal offset for music DB, size
+                    offset=0x2DEA68,
+                    step=172,
+                    length=2019,
+                    # Offset and step of file DB
+                    file_offset=0x2CDB00,
+                    file_step=32,
+                    # Standard lookups
+                    genre_offset=0,
+                    title_offset=1,
+                    artist_offset=2,
+                    comment_offset=3,
+                    english_title_offset=4,
+                    english_artist_offset=5,
+                    extended_genre_offset=None,
+                    charts_offset=8,
+                    folder_offset=9,
+                    # Offsets for normal chart difficulties
+                    easy_offset=12,
+                    normal_offset=13,
+                    hyper_offset=14,
+                    ex_offset=15,
+                    # Offsets for battle chart difficulties
+                    battle_normal_offset=16,
+                    battle_hyper_offset=17,
+                    # Offsets into which offset to seek to for file lookups
+                    easy_file_offset=18,
+                    normal_file_offset=19,
+                    hyper_file_offset=20,
+                    ex_file_offset=21,
+                    battle_normal_file_offset=22,
+                    battle_hyper_file_offset=23,
+                    packedfmt=(
+                        "<"
+                        "I"  # Genre
+                        "I"  # Title
+                        "I"  # Artist
+                        "I"  # Comment
+                        "I"  # English Title
+                        "I"  # English Artist
+                        "H"  # ??
+                        "H"  # ??
+                        "I"  # Available charts mask
+                        "I"  # Folder
+                        "I"  # Event unlocks?
+                        "I"  # Event unlocks?
+                        "B"  # Easy difficulty
+                        "B"  # Normal difficulty
+                        "B"  # Hyper difficulty
+                        "B"  # EX difficulty
+                        "B"  # Battle normal difficulty
+                        "B"  # Battle hyper difficulty
+                        "xx"  # Unknown pointer
+                        "H"  # Easy chart pointer
+                        "H"  # Normal chart pointer
+                        "H"  # Hyper chart pointer
+                        "H"  # EX chart pointer
+                        "H"  # Battle normal pointer
+                        "H"  # Battle hyper pointer
+                        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    ),
+                    # Offsets into file DB for finding file and folder.
+                    file_folder_offset=0,
+                    file_name_offset=1,
+                    filefmt="<" "I" "I" "I" "I" "I" "I" "I" "I",  # Folder  # Filename
+                    available_charts=available_charts,
+                )
+            )
+        else:
+            raise CLIException(f"Unsupported version {self.version}")
+
+        def read_string(offset: int) -> str:
+            # First, translate load offset in memory to disk offset
+            offset = pe.virtual_to_physical(offset)
+
+            # Now, grab bytes until we're null-terminated
+            bytestring = []
+            while data[offset] != 0:
+                bytestring.append(data[offset])
+                offset = offset + 1
+
+            # Its shift-jis encoded, so decode it now
+            return bytes(bytestring).decode("shift_jisx0213")
+
+        def file_chunk(config: PopnScrapeConfiguration, offset: int) -> Tuple[Any, ...]:
+            fileoffset = config.file_offset + (config.file_step * offset)
+            filedata = data[fileoffset : (fileoffset + config.file_step)]
+            return struct.unpack(config.filefmt, filedata)
+
+        def file_handle(config: PopnScrapeConfiguration, offset: int) -> str:
+            chunk = file_chunk(config, offset)
+            return (
+                read_string(chunk[config.file_folder_offset])
+                + "/"
+                + read_string(chunk[config.file_name_offset])
+            )
+
+        for config in configurations:
+            try:
+                print(f"Trying configuration for game version {config.version}...")
+
+                songs = []
+                for songid in range(config.length):
+                    chunkoffset = config.offset + (config.step * songid)
+                    chunkdata = data[chunkoffset : (chunkoffset + config.step)]
+                    unpacked = struct.unpack(config.packedfmt, chunkdata)
+                    valid_charts = config.available_charts(
+                        unpacked[config.charts_offset]
+                    )
+                    songinfo = {
+                        "id": songid,
+                        "title": read_string(unpacked[config.title_offset]),
+                        "artist": read_string(unpacked[config.artist_offset]),
+                        "genre": read_string(unpacked[config.genre_offset]),
+                        "comment": read_string(unpacked[config.comment_offset]),
+                        "title_en": read_string(unpacked[config.english_title_offset])
+                        if config.english_title_offset is not None
+                        else "",
+                        "artist_en": read_string(unpacked[config.english_artist_offset])
+                        if config.english_artist_offset is not None
+                        else "",
+                        "long_genre": read_string(
+                            unpacked[config.extended_genre_offset]
+                        )
+                        if config.extended_genre_offset is not None
+                        else "",
+                        "folder": unpacked[config.folder_offset],
+                        "difficulty": {
+                            "standard": {
+                                "easy": unpacked[config.easy_offset]
+                                if valid_charts[0]
+                                else 0,
+                                "normal": unpacked[config.normal_offset]
+                                if valid_charts[1]
+                                else 0,
+                                "hyper": unpacked[config.hyper_offset]
+                                if valid_charts[2]
+                                else 0,
+                                "ex": unpacked[config.ex_offset]
+                                if valid_charts[3]
+                                else 0,
+                            },
+                            "battle": {
+                                "normal": unpacked[config.battle_normal_offset]
+                                if valid_charts[4]
+                                else 0,
+                                "hyper": unpacked[config.battle_hyper_offset]
+                                if valid_charts[5]
+                                else 0,
+                            },
+                        },
+                        "file": {
+                            "standard": {
+                                "easy": file_handle(
+                                    config, unpacked[config.easy_file_offset]
+                                )
+                                if valid_charts[0]
+                                else "",
+                                "normal": file_handle(
+                                    config, unpacked[config.normal_file_offset]
+                                )
+                                if valid_charts[1]
+                                else "",
+                                "hyper": file_handle(
+                                    config, unpacked[config.hyper_file_offset]
+                                )
+                                if valid_charts[2]
+                                else "",
+                                "ex": file_handle(
+                                    config, unpacked[config.ex_file_offset]
+                                )
+                                if valid_charts[3]
+                                else "",
+                            },
+                            "battle": {
+                                "normal": file_handle(
+                                    config, unpacked[config.battle_normal_file_offset]
+                                )
+                                if valid_charts[4]
+                                else "",
+                                "hyper": file_handle(
+                                    config, unpacked[config.battle_hyper_file_offset]
+                                )
+                                if valid_charts[5]
+                                else "",
+                            },
+                        },
+                    }
+
+                    if (
+                        songinfo["title"] in ["-", "‐"]
+                        and songinfo["genre"] in ["-", "‐"]
+                        and songinfo["artist"] in ["-", "‐"]
+                        and songinfo["comment"] in ["-", "‐"]
+                    ):
+                        # This is a removed song
+                        continue
+
+                    if (
+                        songinfo["title"] == "ＤＵＭＭＹ"
+                        and songinfo["artist"] == "ＤＵＭＭＹ"
+                        and songinfo["genre"] == "ＤＵＭＭＹ"
+                    ):
+                        # This is a song the intern left in
+                        continue
+
+                    # Fix accent issues with title/artist
+                    accent_lut: Dict[str, str] = {
+                        "鵝": "7",
+                        "圄": "à",
+                        "圉": "ä",
+                        "鵤": "Ä",
+                        "鵑": "👁",
+                        "鶤": "©",
+                        "圈": "é",
+                        "鵐": "ê",
+                        "鵙": "Ə",
+                        "鵲": "ë",
+                        "！": "!",
+                        "囿": "♥",
+                        "鶚": "㊙",
+                        "鶉": "ó",
+                        "鶇": "ö",
+                        "鶲": "Ⓟ",
+                        "鶫": "²",
+                        "圍": "@",
+                        "圖": "ţ",
+                        "鵺": "Ü",
+                        "囎": ":",
+                        "囂": "♡",
+                        "釁": "🐾",
+                    }
+
+                    for orig, rep in accent_lut.items():
+                        songinfo["title"] = songinfo["title"].replace(orig, rep)
+                        songinfo["artist"] = songinfo["artist"].replace(orig, rep)
+                        songinfo["title_en"] = songinfo["title_en"].replace(orig, rep)
+                        songinfo["artist_en"] = songinfo["artist_en"].replace(orig, rep)
+                        songinfo["genre"] = songinfo["genre"].replace(orig, rep)
+                    songs.append(songinfo)
+
+                # If we got here, that means we ran into no issues and didn't have to attempt another offset.
+                print("Successfully parsed game DB!")
+
+                return songs
+            except (UnicodeError, InvalidOffsetException):
+                # These offsets are possibly not correct, so try the next configuration.
+                print("Failed to parse game DB using current inferred data version!")
+                pass
+
+        raise CLIException(
+            f"Could not determine correct binary parser configuration for Pop'n Music version {self.version}"
+        )
 
     def lookup(self, server: str, token: str) -> List[Dict[str, Any]]:
         # Grab music info from remote server
@@ -1451,7 +2291,7 @@ class ImportJubeat(ImportBase):
             self.charts = [0, 1, 2]
 
         else:
-            raise Exception(
+            raise CLIException(
                 "Unsupported Jubeat version, expected one of the following: saucer, saucer-fulfill, prop, omni-prop, qubell, omni-qubell, clan, omni-clan, festo, omni-festo!"
             )
 
@@ -1461,7 +2301,7 @@ class ImportJubeat(ImportBase):
 
     def scrape(self, xmlfile: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         if self.version is None:
-            raise Exception("Can't scrape Jubeat database for 'all' version!")
+            raise CLIException("Can't scrape Jubeat database for 'all' version!")
 
         try:
             # Probably UTF-8 music DB
@@ -1548,7 +2388,6 @@ class ImportJubeat(ImportBase):
             VersionConstants.JUBEAT_FESTO,
         }:
             for emblem_entry in root.find("emblem_list") or []:
-                print(emblem_entry)
                 index = int(emblem_entry.find("index").text)
                 layer = int(emblem_entry.find("layer").text)
                 music_id = int(emblem_entry.find("music_id").text)
@@ -1573,7 +2412,7 @@ class ImportJubeat(ImportBase):
         self, server: str, token: str
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         if self.version is None:
-            raise Exception("Can't look up Jubeat database for 'all' version!")
+            raise CLIException("Can't look up Jubeat database for 'all' version!")
 
         # Grab music info from remote server
         music = self.remote_music(server, token)
@@ -1668,7 +2507,7 @@ class ImportJubeat(ImportBase):
 
     def import_music_db(self, songs: List[Dict[str, Any]]) -> None:
         if self.version is None:
-            raise Exception("Can't import Jubeat database for 'all' version!")
+            raise CLIException("Can't import Jubeat database for 'all' version!")
 
         chart_map: Dict[int, str] = {
             0: "basic",
@@ -1732,7 +2571,7 @@ class ImportJubeat(ImportBase):
 
     def import_emblems(self, emblems: List[Dict[str, Any]]) -> None:
         if self.version is None:
-            raise Exception("Can't import Jubeat database for 'all' version!")
+            raise CLIException("Can't import Jubeat database for 'all' version!")
 
         self.start_batch()
         for i, emblem in enumerate(emblems):
@@ -1758,7 +2597,7 @@ class ImportJubeat(ImportBase):
 
     def import_metadata(self, tsvfile: str) -> None:
         if self.version is not None:
-            raise Exception(
+            raise CLIException(
                 "Unsupported Jubeat version, expected one of the following: all"
             )
 
@@ -1774,6 +2613,43 @@ class ImportJubeat(ImportBase):
                 for chart in self.charts:
                     self.update_metadata_for_song(songid, chart, name, artist)
                 self.finish_batch()
+
+
+class IIDXScrapeConfiguration:
+    def __init__(
+        self,
+        *,
+        version: str,
+        stride: int,
+        qp_head_offset: int,
+        qp_head_length: int,
+        qp_hair_offset: int,
+        qp_hair_length: int,
+        qp_face_offset: int,
+        qp_face_length: int,
+        qp_hand_offset: int,
+        qp_hand_length: int,
+        qp_body_offset: int,
+        qp_body_length: int,
+        filename_offset: int,
+        qpro_id_offset: Optional[int],
+        packedfmt: str,
+    ) -> None:
+        self.version = version
+        self.stride = stride
+        self.qp_head_offset = qp_head_offset
+        self.qp_head_length = qp_head_length
+        self.qp_hair_offset = qp_hair_offset
+        self.qp_hair_length = qp_hair_length
+        self.qp_face_offset = qp_face_offset
+        self.qp_face_length = qp_face_length
+        self.qp_hand_offset = qp_hand_offset
+        self.qp_hand_length = qp_hand_length
+        self.qp_body_offset = qp_body_offset
+        self.qp_body_length = qp_body_length
+        self.filename_offset = filename_offset
+        self.qpro_id_offset = qpro_id_offset
+        self.packedfmt = packedfmt
 
 
 class ImportIIDX(ImportBase):
@@ -1828,7 +2704,7 @@ class ImportIIDX(ImportBase):
             actual_version = None
             self.charts = [0, 1, 2, 3, 4, 5, 6]
         else:
-            raise Exception(
+            raise CLIException(
                 "Unsupported IIDX version, expected one of the following: 20, 21, 22, 23, 24, 25, 26, omni-20, omni-21, omni-22, omni-23, omni-24, omni-25, omni-26!"
             )
 
@@ -1975,7 +2851,7 @@ class ImportIIDX(ImportBase):
         self, binfile: str, assets_dir: Optional[str]
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         if self.version is None:
-            raise Exception("Can't import IIDX database for 'all' version!")
+            raise CLIException("Can't import IIDX database for 'all' version!")
 
         if assets_dir is not None:
             sound_files = self.__gather_sound_files(os.path.abspath(assets_dir))
@@ -1994,8 +2870,10 @@ class ImportIIDX(ImportBase):
         except BaseException:
             import_qpros = False  # if it failed then we're reading a music db file, not the executable
 
-        songs: List[Dict[str, Any]] = []
         if not import_qpros:
+            # We should assume this is a standard music_data.bin, and read the soungs out of it.
+            songs: List[Dict[str, Any]] = []
+
             musicdb = IIDXMusicDB(binarydata)
             for song in musicdb.songs:
                 bpm = (0, 0)
@@ -2065,174 +2943,274 @@ class ImportIIDX(ImportBase):
                     }
                 )
 
-        qpros: List[Dict[str, Any]] = []
-        if self.version == VersionConstants.IIDX_TRICORO:
-            # Based on LDJ:J:A:A:2013090900
-            stride = 4
-            qp_head_offset = 0x1CCB18  # qpro body parts are stored in 5 separate arrays in the game data, since there can be collision in
-            qp_head_length = 79  # the qpro id numbers, it's best to store them as separate types in the catalog as well.
-            qp_hair_offset = 0x1CCC58
-            qp_hair_length = 103
-            qp_face_offset = 0x1CCDF8
-            qp_face_length = 50
-            qp_hand_offset = 0x1CCEC0
-            qp_hand_length = 103
-            qp_body_offset = 0x1CD060
-            qp_body_length = 106
-            filename_offset = 0
-            packedfmt = "I"  # filename
-        if self.version == VersionConstants.IIDX_SPADA:
-            # Based on LDJ:J:A:A:2014071600
-            stride = 4
-            qp_head_offset = 0x213B50  # qpro body parts are stored in 5 separate arrays in the game data, since there can be collision in
-            qp_head_length = 125  # the qpro id numbers, it's best to store them as separate types in the catalog as well.
-            qp_hair_offset = 0x213D48
-            qp_hair_length = 126
-            qp_face_offset = 0x213F40
-            qp_face_length = 72
-            qp_hand_offset = 0x214060
-            qp_hand_length = 135
-            qp_body_offset = 0x214280
-            qp_body_length = 135
-            filename_offset = 0
-            packedfmt = "I"  # filename
-        if self.version == VersionConstants.IIDX_PENDUAL:
-            # Based on LDJ:J:A:A:2015080500
-            stride = 4
-            qp_head_offset = 0x1D5228  # qpro body parts are stored in 5 separate arrays in the game data, since there can be collision in
-            qp_head_length = 163  # the qpro id numbers, it's best to store them as separate types in the catalog as well.
-            qp_hair_offset = 0x1D54B8
-            qp_hair_length = 182
-            qp_face_offset = 0x1D5790
-            qp_face_length = 106
-            qp_hand_offset = 0x1D5938
-            qp_hand_length = 184
-            qp_body_offset = 0x1D5C18
-            qp_body_length = 191
-            filename_offset = 0
-            packedfmt = "I"  # filename
-        if self.version == VersionConstants.IIDX_COPULA:
-            # Based on LDJ:J:A:A:2016083100
-            stride = 8
-            qp_head_offset = 0x12F9D8  # qpro body parts are stored in 5 separate arrays in the game data, since there can be collision in
-            qp_head_length = 186  # the qpro id numbers, it's best to store them as separate types in the catalog as well.
-            qp_hair_offset = 0x12FFA8
-            qp_hair_length = 202
-            qp_face_offset = 0x1305F8
-            qp_face_length = 126
-            qp_hand_offset = 0x1309E8
-            qp_hand_length = 206
-            qp_body_offset = 0x131058
-            qp_body_length = 211
-            filename_offset = 0
-            qpro_id_offset = 1
-            packedfmt = "I" "I"  # filename  # string containing id and name of the part
-        if self.version == VersionConstants.IIDX_SINOBUZ:
-            # Based on LDJ:J:A:A:2017082800
-            stride = 8
-            qp_head_offset = 0x149F88  # qpro body parts are stored in 5 separate arrays in the game data, since there can be collision in
-            qp_head_length = 211  # the qpro id numbers, it's best to store them as separate types in the catalog as well.
-            qp_hair_offset = 0x14A620
-            qp_hair_length = 245
-            qp_face_offset = 0x14ADC8
-            qp_face_length = 152
-            qp_hand_offset = 0x14B288
-            qp_hand_length = 236
-            qp_body_offset = 0x14B9E8
-            qp_body_length = 256
-            filename_offset = 0
-            qpro_id_offset = 1
-            packedfmt = "I" "I"  # filename  # string containing id and name of the part
-        if self.version == VersionConstants.IIDX_CANNON_BALLERS:
-            # Based on LDJ:J:A:A:2018091900
-            stride = 16
-            qp_head_offset = 0x2339E0  # qpro body parts are stored in 5 separate arrays in the game data, since there can be collision in
-            qp_head_length = 231  # the qpro id numbers, it's best to store them as separate types in the catalog as well.
-            qp_hair_offset = 0x234850
-            qp_hair_length = 267
-            qp_face_offset = 0x235900
-            qp_face_length = 173
-            qp_hand_offset = 0x2363D0
-            qp_hand_length = 261
-            qp_body_offset = 0x237420
-            qp_body_length = 282
-            filename_offset = 0
-            qpro_id_offset = 1
-            packedfmt = "Q" "Q"  # filename  # string containing id and name of the part
-        if self.version == VersionConstants.IIDX_ROOTAGE:
-            # Based on LDJ:J:A:A:2019090200
-            stride = 16
-            qp_head_offset = 0x5065F0  # qpro body parts are stored in 5 separate arrays in the game data, since there can be collision in
-            qp_head_length = 259  # the qpro id numbers, it's best to store them as separate types in the catalog as well.
-            qp_hair_offset = 0x507620
-            qp_hair_length = 288
-            qp_face_offset = 0x508820
-            qp_face_length = 193
-            qp_hand_offset = 0x509430
-            qp_hand_length = 287
-            qp_body_offset = 0x50A620
-            qp_body_length = 304
-            filename_offset = 0
-            qpro_id_offset = 1
-            packedfmt = "Q" "Q"  # filename  # string containing id and name of the part
-
-        def read_string(offset: int) -> str:
-            # First, translate load offset in memory to disk offset
-            offset = pe.virtual_to_physical(offset)
-
-            # Now, grab bytes until we're null-terminated
-            bytestring = []
-            while binarydata[offset] != 0:
-                bytestring.append(binarydata[offset])
-                offset = offset + 1
-
-            # Its shift-jis encoded, so decode it now
-            return bytes(bytestring).decode("shift_jisx0213")
-
-        def read_qpro_db(offset: int, length: int, qp_type: str) -> None:
-            for qpro_id in range(length):
-                chunkoffset = offset + (stride * qpro_id)
-                chunkdata = binarydata[chunkoffset : (chunkoffset + stride)]
-                unpacked = struct.unpack(packedfmt, chunkdata)
-                filename = read_string(unpacked[filename_offset]).replace("qp_", "")
-                remove = f"_{qp_type}.ifs"
-                filename = (
-                    filename.replace(remove, "")
-                    .replace("_head1.ifs", "")
-                    .replace("_head2.ifs", "")
+            # We only import one or the other here, I know its a weird function.
+            return songs, []
+        else:
+            # We should assume that we want to extract QPro data from this DLL.
+            configurations: List[IIDXScrapeConfiguration] = []
+            if self.version == VersionConstants.IIDX_TRICORO:
+                # Based on LDJ:J:A:A:2013090900
+                configurations.append(
+                    IIDXScrapeConfiguration(
+                        version="LDJ:J:A:A:2013090900",
+                        stride=4,
+                        qp_head_offset=0x1CCB18,  # qpro body parts are stored in 5 separate arrays in the game data, since there can be collision in
+                        qp_head_length=79,  # the qpro id numbers, it's best to store them as separate types in the catalog as well.
+                        qp_hair_offset=0x1CCC58,
+                        qp_hair_length=103,
+                        qp_face_offset=0x1CCDF8,
+                        qp_face_length=50,
+                        qp_hand_offset=0x1CCEC0,
+                        qp_hand_length=103,
+                        qp_body_offset=0x1CD060,
+                        qp_body_length=106,
+                        filename_offset=0,
+                        qpro_id_offset=None,
+                        packedfmt="I",  # filename
+                    )
                 )
-                if self.version in [
-                    VersionConstants.IIDX_TRICORO,
-                    VersionConstants.IIDX_SPADA,
-                    VersionConstants.IIDX_PENDUAL,
-                ]:
-                    name = filename  # qpro names are not stored in these 3 games so use the identifier instead
-                else:
-                    name = read_string(unpacked[qpro_id_offset])[
-                        4:
-                    ]  # qpro name is stored in second string of form "000:name"
-                qproinfo = {
-                    "identifier": filename,
-                    "id": qpro_id,
-                    "name": name,
-                    "type": qp_type,
-                }
-                qpros.append(qproinfo)
+            if self.version == VersionConstants.IIDX_SPADA:
+                # Based on LDJ:J:A:A:2014071600
+                configurations.append(
+                    IIDXScrapeConfiguration(
+                        version="LDJ:J:A:A:2014071600",
+                        stride=4,
+                        qp_head_offset=0x213B50,  # qpro body parts are stored in 5 separate arrays in the game data, since there can be collision in
+                        qp_head_length=125,  # the qpro id numbers, it's best to store them as separate types in the catalog as well.
+                        qp_hair_offset=0x213D48,
+                        qp_hair_length=126,
+                        qp_face_offset=0x213F40,
+                        qp_face_length=72,
+                        qp_hand_offset=0x214060,
+                        qp_hand_length=135,
+                        qp_body_offset=0x214280,
+                        qp_body_length=135,
+                        filename_offset=0,
+                        qpro_id_offset=None,
+                        packedfmt="I",  # filename
+                    )
+                )
+            if self.version == VersionConstants.IIDX_PENDUAL:
+                # Based on LDJ:J:A:A:2015080500
+                configurations.append(
+                    IIDXScrapeConfiguration(
+                        version="LDJ:J:A:A:2015080500",
+                        stride=4,
+                        qp_head_offset=0x1D5228,  # qpro body parts are stored in 5 separate arrays in the game data, since there can be collision in
+                        qp_head_length=163,  # the qpro id numbers, it's best to store them as separate types in the catalog as well.
+                        qp_hair_offset=0x1D54B8,
+                        qp_hair_length=182,
+                        qp_face_offset=0x1D5790,
+                        qp_face_length=106,
+                        qp_hand_offset=0x1D5938,
+                        qp_hand_length=184,
+                        qp_body_offset=0x1D5C18,
+                        qp_body_length=191,
+                        filename_offset=0,
+                        qpro_id_offset=None,
+                        packedfmt="I",  # filename
+                    )
+                )
+            if self.version == VersionConstants.IIDX_COPULA:
+                # Based on LDJ:J:A:A:2016083100
+                configurations.append(
+                    IIDXScrapeConfiguration(
+                        version="LDJ:J:A:A:2016083100",
+                        stride=8,
+                        qp_head_offset=0x12F9D8,  # qpro body parts are stored in 5 separate arrays in the game data, since there can be collision in
+                        qp_head_length=186,  # the qpro id numbers, it's best to store them as separate types in the catalog as well.
+                        qp_hair_offset=0x12FFA8,
+                        qp_hair_length=202,
+                        qp_face_offset=0x1305F8,
+                        qp_face_length=126,
+                        qp_hand_offset=0x1309E8,
+                        qp_hand_length=206,
+                        qp_body_offset=0x131058,
+                        qp_body_length=211,
+                        filename_offset=0,
+                        qpro_id_offset=1,
+                        packedfmt="I"
+                        "I",  # filename  # string containing id and name of the part
+                    )
+                )
+            if self.version == VersionConstants.IIDX_SINOBUZ:
+                # Based on LDJ:J:A:A:2017082800
+                configurations.append(
+                    IIDXScrapeConfiguration(
+                        version="LDJ:J:A:A:2017082800",
+                        stride=8,
+                        qp_head_offset=0x149F88,  # qpro body parts are stored in 5 separate arrays in the game data, since there can be collision in
+                        qp_head_length=211,  # the qpro id numbers, it's best to store them as separate types in the catalog as well.
+                        qp_hair_offset=0x14A620,
+                        qp_hair_length=245,
+                        qp_face_offset=0x14ADC8,
+                        qp_face_length=152,
+                        qp_hand_offset=0x14B288,
+                        qp_hand_length=236,
+                        qp_body_offset=0x14B9E8,
+                        qp_body_length=256,
+                        filename_offset=0,
+                        qpro_id_offset=1,
+                        packedfmt="I"
+                        "I",  # filename  # string containing id and name of the part
+                    )
+                )
+            if self.version == VersionConstants.IIDX_CANNON_BALLERS:
+                # Based on LDJ:J:A:A:2018091900
+                configurations.append(
+                    IIDXScrapeConfiguration(
+                        version="LDJ:J:A:A:2018091900",
+                        stride=16,
+                        qp_head_offset=0x2339E0,  # qpro body parts are stored in 5 separate arrays in the game data, since there can be collision in
+                        qp_head_length=231,  # the qpro id numbers, it's best to store them as separate types in the catalog as well.
+                        qp_hair_offset=0x234850,
+                        qp_hair_length=267,
+                        qp_face_offset=0x235900,
+                        qp_face_length=173,
+                        qp_hand_offset=0x2363D0,
+                        qp_hand_length=261,
+                        qp_body_offset=0x237420,
+                        qp_body_length=282,
+                        filename_offset=0,
+                        qpro_id_offset=1,
+                        packedfmt="Q"
+                        "Q",  # filename  # string containing id and name of the part
+                    )
+                )
+            if self.version == VersionConstants.IIDX_ROOTAGE:
+                # Based on LDJ:J:A:A:2019090200
+                configurations.append(
+                    IIDXScrapeConfiguration(
+                        version="LDJ:J:A:A:2019090200",
+                        stride=16,
+                        qp_head_offset=0x5065F0,  # qpro body parts are stored in 5 separate arrays in the game data, since there can be collision in
+                        qp_head_length=259,  # the qpro id numbers, it's best to store them as separate types in the catalog as well.
+                        qp_hair_offset=0x507620,
+                        qp_hair_length=288,
+                        qp_face_offset=0x508820,
+                        qp_face_length=193,
+                        qp_hand_offset=0x509430,
+                        qp_hand_length=287,
+                        qp_body_offset=0x50A620,
+                        qp_body_length=304,
+                        filename_offset=0,
+                        qpro_id_offset=1,
+                        packedfmt="Q"
+                        "Q",  # filename  # string containing id and name of the part
+                    )
+                )
 
-        if import_qpros:
-            read_qpro_db(qp_head_offset, qp_head_length, "head")
-            read_qpro_db(qp_hair_offset, qp_hair_length, "hair")
-            read_qpro_db(qp_face_offset, qp_face_length, "face")
-            read_qpro_db(qp_hand_offset, qp_hand_length, "hand")
-            read_qpro_db(qp_body_offset, qp_body_length, "body")
+            def read_string(offset: int) -> str:
+                # First, translate load offset in memory to disk offset
+                offset = pe.virtual_to_physical(offset)
 
-        return songs, qpros
+                # Now, grab bytes until we're null-terminated
+                bytestring = []
+                while binarydata[offset] != 0:
+                    bytestring.append(binarydata[offset])
+                    offset = offset + 1
+
+                # Its shift-jis encoded, so decode it now
+                return bytes(bytestring).decode("shift_jisx0213")
+
+            def read_qpro_db(
+                qpros: List[Dict[str, Any]],
+                config: IIDXScrapeConfiguration,
+                offset: int,
+                length: int,
+                qp_type: str,
+            ) -> None:
+                for qpro_id in range(length):
+                    chunkoffset = offset + (config.stride * qpro_id)
+                    chunkdata = binarydata[chunkoffset : (chunkoffset + config.stride)]
+                    unpacked = struct.unpack(config.packedfmt, chunkdata)
+                    filename = read_string(unpacked[config.filename_offset]).replace(
+                        "qp_", ""
+                    )
+                    remove = f"_{qp_type}.ifs"
+                    filename = (
+                        filename.replace(remove, "")
+                        .replace("_head1.ifs", "")
+                        .replace("_head2.ifs", "")
+                    )
+                    if config.qpro_id_offset is None:
+                        name = filename  # qpro names are not stored in these games so use the identifier instead
+                    else:
+                        name = read_string(unpacked[config.qpro_id_offset])[
+                            4:
+                        ]  # qpro name is stored in second string of form "000:name"
+                    qproinfo = {
+                        "identifier": filename,
+                        "id": qpro_id,
+                        "name": name,
+                        "type": qp_type,
+                    }
+                    qpros.append(qproinfo)
+
+            for config in configurations:
+                try:
+                    print(f"Trying configuration for game version {config.version}...")
+
+                    qpros: List[Dict[str, Any]] = []
+
+                    # For each category, attempt to append all the types.
+                    read_qpro_db(
+                        qpros,
+                        config,
+                        config.qp_head_offset,
+                        config.qp_head_length,
+                        "head",
+                    )
+                    read_qpro_db(
+                        qpros,
+                        config,
+                        config.qp_hair_offset,
+                        config.qp_hair_length,
+                        "hair",
+                    )
+                    read_qpro_db(
+                        qpros,
+                        config,
+                        config.qp_face_offset,
+                        config.qp_face_length,
+                        "face",
+                    )
+                    read_qpro_db(
+                        qpros,
+                        config,
+                        config.qp_hand_offset,
+                        config.qp_hand_length,
+                        "hand",
+                    )
+                    read_qpro_db(
+                        qpros,
+                        config,
+                        config.qp_body_offset,
+                        config.qp_body_length,
+                        "body",
+                    )
+
+                    # If we got here, that means we ran into no issues and didn't have to attempt another offset.
+                    print("Successfully parsed game DB!")
+
+                    # We only import one or the other here, I know its a weird function.
+                    return [], qpros
+                except (UnicodeError, InvalidOffsetException):
+                    # These offsets are possibly not correct, so try the next configuration.
+                    print(
+                        "Failed to parse game DB using current inferred data version!"
+                    )
+                    pass
+
+            raise CLIException(
+                f"Could not determine correct binary parser configuration for IIDX version {self.version}"
+            )
 
     def lookup(
         self, server: str, token: str
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         if self.version is None:
-            raise Exception("Can't look up IIDX database for 'all' version!")
+            raise CLIException("Can't look up IIDX database for 'all' version!")
 
         # Grab music info from remote server
         music = self.remote_music(server, token)
@@ -2306,7 +3284,7 @@ class ImportIIDX(ImportBase):
 
     def import_music_db(self, songs: List[Dict[str, Any]]) -> None:
         if self.version is None:
-            raise Exception("Can't import IIDX database for 'all' version!")
+            raise CLIException("Can't import IIDX database for 'all' version!")
 
         # Import each song into our DB
         chart_map = {
@@ -2353,7 +3331,7 @@ class ImportIIDX(ImportBase):
 
     def import_qpros(self, qpros: List[Dict[str, Any]]) -> None:
         if self.version is None:
-            raise Exception("Can't import IIDX database for 'all' version!")
+            raise CLIException("Can't import IIDX database for 'all' version!")
 
         self.start_batch()
         for i, qpro in enumerate(qpros):
@@ -2376,7 +3354,7 @@ class ImportIIDX(ImportBase):
 
     def import_metadata(self, tsvfile: str) -> None:
         if self.version is not None:
-            raise Exception(
+            raise CLIException(
                 "Unsupported IIDX version, expected one of the following: all"
             )
 
@@ -2402,6 +3380,67 @@ class ImportIIDX(ImportBase):
                 self.finish_batch()
 
 
+class DDRScrapeConfiguration:
+    def __init__(
+        self,
+        *,
+        version: str,
+        offset: int,
+        size: int,
+        length: int,
+        unpackfmt: str,
+        id_offset: int,
+        edit_offset: int,
+        bpm_min_offset: int,
+        bpm_max_offset: int,
+        folder_offset: int,
+        single_difficulties: int,
+        double_difficulties: int,
+        groove_single_beginner: int,
+        groove_single_basic: int,
+        groove_single_difficult: int,
+        groove_single_expert: int,
+        groove_single_challenge: int,
+        groove_double_basic: int,
+        groove_double_difficult: int,
+        groove_double_expert: int,
+        groove_double_challenge: int,
+        voltage: int,
+        stream: int,
+        air: int,
+        chaos: int,
+        freeze: int,
+        folder_start: int,
+    ) -> None:
+        self.version = version
+        self.offset = offset
+        self.size = size
+        self.length = length
+        self.unpackfmt = unpackfmt
+        self.id_offset = id_offset
+        self.edit_offset = edit_offset
+        self.bpm_min_offset = bpm_min_offset
+        self.bpm_max_offset = bpm_max_offset
+        self.folder_offset = folder_offset
+        self.single_difficulties = single_difficulties
+        self.double_difficulties = double_difficulties
+        self.groove_single_beginner = groove_single_beginner
+        self.groove_single_basic = groove_single_basic
+        self.groove_single_difficult = groove_single_difficult
+        self.groove_single_expert = groove_single_expert
+        self.groove_single_challenge = groove_single_challenge
+        self.groove_double_basic = groove_double_basic
+        self.groove_double_difficult = groove_double_difficult
+        self.groove_double_expert = groove_double_expert
+        self.groove_double_challenge = groove_double_challenge
+        self.voltage = voltage
+        self.stream = stream
+        self.air = air
+        self.chaos = chaos
+        self.freeze = freeze
+        self.folder_start = folder_start
+
+
 class ImportDDR(ImportBase):
     def __init__(
         self,
@@ -2420,7 +3459,7 @@ class ImportDDR(ImportBase):
             }[version]
             self.charts = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
         else:
-            raise Exception(
+            raise CLIException(
                 "Unsupported DDR version, expected one of the following: 12, 13, 14, 15, 16"
             )
 
@@ -2431,312 +3470,423 @@ class ImportDDR(ImportBase):
             data = myfile.read()
             myfile.close()
 
+        def add_skew(unpackfmt: str, size: int, skew: int) -> str:
+            # Skew is because I'm too lazy to count the Hs in the format, so just
+            # pad it for ease of construction here.
+            return unpackfmt + ("x" * (size - len(unpackfmt) - skew))
+
+        configurations: List[DDRScrapeConfiguration] = []
         if self.version == VersionConstants.DDR_X2:
             # Based on JDX:J:A:A:2010111000
-            offset = 0x254FC0
-            size = 0x14C
-            length = 894
-            # Basic stuff like ID, bpm, chart difficulties
-            unpackfmt = "<xxxxxxxxHHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxHHBBBBBBBBBB"
-            # Groove radar
-            unpackfmt += "HHHHHHHHH" * 5
-            if len(unpackfmt) < size:
-                # Skew is because I'm too lazy to count the Hs above
-                skew = 3 + (9 * 5)
-                # Just pad it for ease of construction
-                unpackfmt = unpackfmt + ("x" * (size - len(unpackfmt) - skew))
-            # Basic offsets
-            id_offset = 1
-            edit_offset = 0
-            bpm_min_offset = 3
-            bpm_max_offset = 2
-            folder_offset = 24  # This is a byte offset into the raw field
-
-            # Single/double difficulty array offsets
-            single_difficulties = 4
-            double_difficulties = 9
-
-            # Groove gauge offsets
-            groove_single_beginner = 22
-            groove_single_basic = 14
-            groove_single_difficult = 15
-            groove_single_expert = 16
-            groove_single_challenge = 17
-
-            groove_double_basic = 18
-            groove_double_difficult = 19
-            groove_double_expert = 20
-            groove_double_challenge = 21
-
-            # Relative offsets for each groove gauge value
-            voltage = 0
-            stream = 9
-            air = 18
-            chaos = 27
-            freeze = 36
-
-            # Folder start version
-            folder_start = 12
+            configurations.append(
+                DDRScrapeConfiguration(
+                    version="JDX:J:A:A:2010111000",
+                    offset=0x254FC0,
+                    size=0x14C,
+                    length=894,
+                    unpackfmt=add_skew(
+                        (
+                            # Basic stuff like ID, bpm, chart difficulties
+                            "<xxxxxxxxHHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxHHBBBBBBBBBB"
+                            # Groove radar
+                            + ("HHHHHHHHH" * 5)
+                        ),
+                        0x14C,
+                        3 + (9 * 5),
+                    ),
+                    # Basic offsets
+                    id_offset=1,
+                    edit_offset=0,
+                    bpm_min_offset=3,
+                    bpm_max_offset=2,
+                    folder_offset=24,  # This is a byte offset into the raw field
+                    # Single/double difficulty array offsets
+                    single_difficulties=4,
+                    double_difficulties=9,
+                    # Groove gauge offsets
+                    groove_single_beginner=22,
+                    groove_single_basic=14,
+                    groove_single_difficult=15,
+                    groove_single_expert=16,
+                    groove_single_challenge=17,
+                    groove_double_basic=18,
+                    groove_double_difficult=19,
+                    groove_double_expert=20,
+                    groove_double_challenge=21,
+                    # Relative offsets for each groove gauge value
+                    voltage=0,
+                    stream=9,
+                    air=18,
+                    chaos=27,
+                    freeze=36,
+                    # Folder start version
+                    folder_start=12,
+                )
+            )
         elif self.version == VersionConstants.DDR_X3_VS_2NDMIX:
             # Based on KDX:J:A:A:2012112600
-            offset = 0x27A4C8
-            size = 0x150
-            length = 1062
-            # Basic stuff like ID, bpm, chart difficulties
-            unpackfmt = (
-                "<xxxxxxxxHHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxHHBBBBBBBBBB"
+            configurations.append(
+                DDRScrapeConfiguration(
+                    version="KDX:J:A:A:2012112600",
+                    offset=0x27A4C8,
+                    size=0x150,
+                    length=1062,
+                    unpackfmt=add_skew(
+                        (
+                            # Basic stuff like ID, bpm, chart difficulties
+                            "<xxxxxxxxHHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxHHBBBBBBBBBB"
+                            # Groove radar
+                            + ("HHHHHHHHH" * 5)
+                        ),
+                        0x150,
+                        3 + (9 * 5),
+                    ),
+                    # Basic offsets
+                    id_offset=1,
+                    edit_offset=0,
+                    bpm_min_offset=3,
+                    bpm_max_offset=2,
+                    folder_offset=24,  # This is a byte offset into the raw field
+                    # Single/double difficulty array offsets
+                    single_difficulties=4,
+                    double_difficulties=9,
+                    # Groove gauge offsets
+                    groove_single_beginner=22,
+                    groove_single_basic=14,
+                    groove_single_difficult=15,
+                    groove_single_expert=16,
+                    groove_single_challenge=17,
+                    groove_double_basic=18,
+                    groove_double_difficult=19,
+                    groove_double_expert=20,
+                    groove_double_challenge=21,
+                    # Relative offsets for each groove gauge value
+                    voltage=0,
+                    stream=9,
+                    air=18,
+                    chaos=27,
+                    freeze=36,
+                    # Folder start version
+                    folder_start=13,
+                )
             )
-            # Groove radar
-            unpackfmt += "HHHHHHHHH" * 5
-            if len(unpackfmt) < size:
-                # Skew is because I'm too lazy to count the Hs above
-                skew = 3 + (9 * 5)
-                # Just pad it for ease of construction
-                unpackfmt = unpackfmt + ("x" * (size - len(unpackfmt) - skew))
-            # Basic offsets
-            id_offset = 1
-            edit_offset = 0
-            bpm_min_offset = 3
-            bpm_max_offset = 2
-            folder_offset = 24  # This is a byte offset into the raw field
-
-            # Single/double difficulty array offsets
-            single_difficulties = 4
-            double_difficulties = 9
-
-            # Groove gauge offsets
-            groove_single_beginner = 22
-            groove_single_basic = 14
-            groove_single_difficult = 15
-            groove_single_expert = 16
-            groove_single_challenge = 17
-
-            groove_double_basic = 18
-            groove_double_difficult = 19
-            groove_double_expert = 20
-            groove_double_challenge = 21
-
-            # Relative offsets for each groove gauge value
-            voltage = 0
-            stream = 9
-            air = 18
-            chaos = 27
-            freeze = 36
-
-            # Folder start version
-            folder_start = 13
         elif self.version == VersionConstants.DDR_2013:
             # Based on MDX:J:A:A:2014032700
-            offset = 0x2663D8
-            size = 0x1D0
-            length = 1238
-            # Basic stuff like ID, bpm, chart difficulties
-            unpackfmt = (
-                "<xxxxxxxxHHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxHHBBBBBBBBBB"
+            configurations.append(
+                DDRScrapeConfiguration(
+                    version="MDX:J:A:A:2014032700",
+                    offset=0x2663D8,
+                    size=0x1D0,
+                    length=1238,
+                    unpackfmt=add_skew(
+                        (
+                            # Basic stuff like ID, bpm, chart difficulties
+                            "<xxxxxxxxHHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxHHBBBBBBBBBB"
+                            # Groove radar
+                            + ("HHHHHHHHH" * 5)
+                        ),
+                        0x1D0,
+                        3 + (9 * 5),
+                    ),
+                    # Basic offsets
+                    id_offset=1,
+                    edit_offset=0,
+                    bpm_min_offset=3,
+                    bpm_max_offset=2,
+                    folder_offset=20,  # This is a byte offset into the raw field
+                    # Single/double difficulty array offsets
+                    single_difficulties=4,
+                    double_difficulties=9,
+                    # Groove gauge offsets
+                    groove_single_beginner=22,
+                    groove_single_basic=14,
+                    groove_single_difficult=15,
+                    groove_single_expert=16,
+                    groove_single_challenge=17,
+                    groove_double_basic=18,
+                    groove_double_difficult=19,
+                    groove_double_expert=20,
+                    groove_double_challenge=21,
+                    # Relative offsets for each groove gauge value
+                    voltage=0,
+                    stream=9,
+                    air=18,
+                    chaos=27,
+                    freeze=36,
+                    # Folder start version
+                    folder_start=14,
+                )
             )
-            # Groove radar
-            unpackfmt += "HHHHHHHHH" * 5
-            if len(unpackfmt) < size:
-                # Skew is because I'm too lazy to count the Hs above
-                skew = 3 + (9 * 5)
-                # Just pad it for ease of construction
-                unpackfmt = unpackfmt + ("x" * (size - len(unpackfmt) - skew))
-            # Basic offsets
-            id_offset = 1
-            edit_offset = 0
-            bpm_min_offset = 3
-            bpm_max_offset = 2
-            folder_offset = 20  # This is a byte offset into the raw field
-
-            # Single/double difficulty array offsets
-            single_difficulties = 4
-            double_difficulties = 9
-
-            # Groove gauge offsets
-            groove_single_beginner = 22
-            groove_single_basic = 14
-            groove_single_difficult = 15
-            groove_single_expert = 16
-            groove_single_challenge = 17
-
-            groove_double_basic = 18
-            groove_double_difficult = 19
-            groove_double_expert = 20
-            groove_double_challenge = 21
-
-            # Relative offsets for each groove gauge value
-            voltage = 0
-            stream = 9
-            air = 18
-            chaos = 27
-            freeze = 36
-
-            # Folder start version
-            folder_start = 14
         elif self.version == VersionConstants.DDR_2014:
             # Based on MDX:A:A:A:2015122100
-            offset = 0x2B72B0
-            size = 0x1D0
-            length = 1466
-            # Basic stuff like ID, bpm, chart difficulties
-            unpackfmt = (
-                "<xxxxxxxxHHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxHHBBBBBBBBBB"
+            configurations.append(
+                DDRScrapeConfiguration(
+                    version="MDX:A:A:A:2015122100",
+                    offset=0x2B72B0,
+                    size=0x1D0,
+                    length=1466,
+                    unpackfmt=add_skew(
+                        (
+                            # Basic stuff like ID, bpm, chart difficulties
+                            "<xxxxxxxxHHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxHHBBBBBBBBBB"
+                            # Groove radar
+                            + ("HHHHHHHHH" * 5)
+                        ),
+                        0x1D0,
+                        3 + (9 * 5),
+                    ),
+                    # Basic offsets
+                    id_offset=1,
+                    edit_offset=0,
+                    bpm_min_offset=3,
+                    bpm_max_offset=2,
+                    folder_offset=20,  # This is a byte offset into the raw field
+                    # Single/double difficulty array offsets
+                    single_difficulties=4,
+                    double_difficulties=9,
+                    # Groove gauge offsets
+                    groove_single_beginner=22,
+                    groove_single_basic=14,
+                    groove_single_difficult=15,
+                    groove_single_expert=16,
+                    groove_single_challenge=17,
+                    groove_double_basic=18,
+                    groove_double_difficult=19,
+                    groove_double_expert=20,
+                    groove_double_challenge=21,
+                    # Relative offsets for each groove gauge value
+                    voltage=0,
+                    stream=9,
+                    air=18,
+                    chaos=27,
+                    freeze=36,
+                    # Folder start version
+                    folder_start=15,
+                )
             )
-            # Groove radar
-            unpackfmt += "HHHHHHHHH" * 5
-            if len(unpackfmt) < size:
-                # Skew is because I'm too lazy to count the Hs above
-                skew = 3 + (9 * 5)
-                # Just pad it for ease of construction
-                unpackfmt = unpackfmt + ("x" * (size - len(unpackfmt) - skew))
-            # Basic offsets
-            id_offset = 1
-            edit_offset = 0
-            bpm_min_offset = 3
-            bpm_max_offset = 2
-            folder_offset = 20  # This is a byte offset into the raw field
-
-            # Single/double difficulty array offsets
-            single_difficulties = 4
-            double_difficulties = 9
-
-            # Groove gauge offsets
-            groove_single_beginner = 22
-            groove_single_basic = 14
-            groove_single_difficult = 15
-            groove_single_expert = 16
-            groove_single_challenge = 17
-
-            groove_double_basic = 18
-            groove_double_difficult = 19
-            groove_double_expert = 20
-            groove_double_challenge = 21
-
-            # Relative offsets for each groove gauge value
-            voltage = 0
-            stream = 9
-            air = 18
-            chaos = 27
-            freeze = 36
-
-            # Folder start version
-            folder_start = 15
         else:
-            raise Exception("Unknown game version!")
-        songs = []
+            raise CLIException("Unknown game version {self.version}!")
 
-        for i in range(length):
-            start = offset + (i * size)
-            end = offset + ((i + 1) * size)
-            chunk = data[start:end]
+        for config in configurations:
+            try:
+                print(f"Trying configuration for game version {config.version}...")
 
-            # First, figure out if it is actually a song
-            ssqcode = chunk[0:6].decode("ascii").replace("\0", "").strip()
-            if len(ssqcode) == 0:
-                continue
-            unpacked = struct.unpack(unpackfmt, chunk)
-            songinfo = {
-                "id": unpacked[id_offset],
-                "edit_id": unpacked[edit_offset],
-                "ssqcode": ssqcode,
-                "difficulty": {
-                    "single": {
-                        "beginner": unpacked[single_difficulties + 0],
-                        "basic": unpacked[single_difficulties + 1],
-                        "difficult": unpacked[single_difficulties + 2],
-                        "expert": unpacked[single_difficulties + 3],
-                        "challenge": unpacked[single_difficulties + 4],
-                    },
-                    "double": {
-                        "beginner": unpacked[double_difficulties + 0],
-                        "basic": unpacked[double_difficulties + 1],
-                        "difficult": unpacked[double_difficulties + 2],
-                        "expert": unpacked[double_difficulties + 3],
-                        "challenge": unpacked[double_difficulties + 4],
-                    },
-                },
-                "groove_gauge": {
-                    "single": {
-                        "beginner": {
-                            "voltage": unpacked[groove_single_beginner + voltage],
-                            "stream": unpacked[groove_single_beginner + stream],
-                            "air": unpacked[groove_single_beginner + air],
-                            "chaos": unpacked[groove_single_beginner + chaos],
-                            "freeze": unpacked[groove_single_beginner + freeze],
+                songs = []
+
+                for i in range(config.length):
+                    start = config.offset + (i * config.size)
+                    end = config.offset + ((i + 1) * config.size)
+                    chunk = data[start:end]
+
+                    # First, figure out if it is actually a song
+                    ssqcode = chunk[0:6].decode("ascii").replace("\0", "").strip()
+                    if len(ssqcode) == 0:
+                        continue
+                    unpacked = struct.unpack(config.unpackfmt, chunk)
+                    songinfo = {
+                        "id": unpacked[config.id_offset],
+                        "edit_id": unpacked[config.edit_offset],
+                        "ssqcode": ssqcode,
+                        "difficulty": {
+                            "single": {
+                                "beginner": unpacked[config.single_difficulties + 0],
+                                "basic": unpacked[config.single_difficulties + 1],
+                                "difficult": unpacked[config.single_difficulties + 2],
+                                "expert": unpacked[config.single_difficulties + 3],
+                                "challenge": unpacked[config.single_difficulties + 4],
+                            },
+                            "double": {
+                                "beginner": unpacked[config.double_difficulties + 0],
+                                "basic": unpacked[config.double_difficulties + 1],
+                                "difficult": unpacked[config.double_difficulties + 2],
+                                "expert": unpacked[config.double_difficulties + 3],
+                                "challenge": unpacked[config.double_difficulties + 4],
+                            },
                         },
-                        "basic": {
-                            "voltage": unpacked[groove_single_basic + voltage],
-                            "stream": unpacked[groove_single_basic + stream],
-                            "air": unpacked[groove_single_basic + air],
-                            "chaos": unpacked[groove_single_basic + chaos],
-                            "freeze": unpacked[groove_single_basic + freeze],
+                        "groove_gauge": {
+                            "single": {
+                                "beginner": {
+                                    "voltage": unpacked[
+                                        config.groove_single_beginner + config.voltage
+                                    ],
+                                    "stream": unpacked[
+                                        config.groove_single_beginner + config.stream
+                                    ],
+                                    "air": unpacked[
+                                        config.groove_single_beginner + config.air
+                                    ],
+                                    "chaos": unpacked[
+                                        config.groove_single_beginner + config.chaos
+                                    ],
+                                    "freeze": unpacked[
+                                        config.groove_single_beginner + config.freeze
+                                    ],
+                                },
+                                "basic": {
+                                    "voltage": unpacked[
+                                        config.groove_single_basic + config.voltage
+                                    ],
+                                    "stream": unpacked[
+                                        config.groove_single_basic + config.stream
+                                    ],
+                                    "air": unpacked[
+                                        config.groove_single_basic + config.air
+                                    ],
+                                    "chaos": unpacked[
+                                        config.groove_single_basic + config.chaos
+                                    ],
+                                    "freeze": unpacked[
+                                        config.groove_single_basic + config.freeze
+                                    ],
+                                },
+                                "difficult": {
+                                    "voltage": unpacked[
+                                        config.groove_single_difficult + config.voltage
+                                    ],
+                                    "stream": unpacked[
+                                        config.groove_single_difficult + config.stream
+                                    ],
+                                    "air": unpacked[
+                                        config.groove_single_difficult + config.air
+                                    ],
+                                    "chaos": unpacked[
+                                        config.groove_single_difficult + config.chaos
+                                    ],
+                                    "freeze": unpacked[
+                                        config.groove_single_difficult + config.freeze
+                                    ],
+                                },
+                                "expert": {
+                                    "voltage": unpacked[
+                                        config.groove_single_expert + config.voltage
+                                    ],
+                                    "stream": unpacked[
+                                        config.groove_single_expert + config.stream
+                                    ],
+                                    "air": unpacked[
+                                        config.groove_single_expert + config.air
+                                    ],
+                                    "chaos": unpacked[
+                                        config.groove_single_expert + config.chaos
+                                    ],
+                                    "freeze": unpacked[
+                                        config.groove_single_expert + config.freeze
+                                    ],
+                                },
+                                "challenge": {
+                                    "voltage": unpacked[
+                                        config.groove_single_challenge + config.voltage
+                                    ],
+                                    "stream": unpacked[
+                                        config.groove_single_challenge + config.stream
+                                    ],
+                                    "air": unpacked[
+                                        config.groove_single_challenge + config.air
+                                    ],
+                                    "chaos": unpacked[
+                                        config.groove_single_challenge + config.chaos
+                                    ],
+                                    "freeze": unpacked[
+                                        config.groove_single_challenge + config.freeze
+                                    ],
+                                },
+                            },
+                            "double": {
+                                "beginner": {
+                                    "voltage": 0,
+                                    "stream": 0,
+                                    "air": 0,
+                                    "chaos": 0,
+                                    "freeze": 0,
+                                },
+                                "basic": {
+                                    "voltage": unpacked[
+                                        config.groove_double_basic + config.voltage
+                                    ],
+                                    "stream": unpacked[
+                                        config.groove_double_basic + config.stream
+                                    ],
+                                    "air": unpacked[
+                                        config.groove_double_basic + config.air
+                                    ],
+                                    "chaos": unpacked[
+                                        config.groove_double_basic + config.chaos
+                                    ],
+                                    "freeze": unpacked[
+                                        config.groove_double_basic + config.freeze
+                                    ],
+                                },
+                                "difficult": {
+                                    "voltage": unpacked[
+                                        config.groove_double_difficult + config.voltage
+                                    ],
+                                    "stream": unpacked[
+                                        config.groove_double_difficult + config.stream
+                                    ],
+                                    "air": unpacked[
+                                        config.groove_double_difficult + config.air
+                                    ],
+                                    "chaos": unpacked[
+                                        config.groove_double_difficult + config.chaos
+                                    ],
+                                    "freeze": unpacked[
+                                        config.groove_double_difficult + config.freeze
+                                    ],
+                                },
+                                "expert": {
+                                    "voltage": unpacked[
+                                        config.groove_double_expert + config.voltage
+                                    ],
+                                    "stream": unpacked[
+                                        config.groove_double_expert + config.stream
+                                    ],
+                                    "air": unpacked[
+                                        config.groove_double_expert + config.air
+                                    ],
+                                    "chaos": unpacked[
+                                        config.groove_double_expert + config.chaos
+                                    ],
+                                    "freeze": unpacked[
+                                        config.groove_double_expert + config.freeze
+                                    ],
+                                },
+                                "challenge": {
+                                    "voltage": unpacked[
+                                        config.groove_double_challenge + config.voltage
+                                    ],
+                                    "stream": unpacked[
+                                        config.groove_double_challenge + config.stream
+                                    ],
+                                    "air": unpacked[
+                                        config.groove_double_challenge + config.air
+                                    ],
+                                    "chaos": unpacked[
+                                        config.groove_double_challenge + config.chaos
+                                    ],
+                                    "freeze": unpacked[
+                                        config.groove_double_challenge + config.freeze
+                                    ],
+                                },
+                            },
                         },
-                        "difficult": {
-                            "voltage": unpacked[groove_single_difficult + voltage],
-                            "stream": unpacked[groove_single_difficult + stream],
-                            "air": unpacked[groove_single_difficult + air],
-                            "chaos": unpacked[groove_single_difficult + chaos],
-                            "freeze": unpacked[groove_single_difficult + freeze],
-                        },
-                        "expert": {
-                            "voltage": unpacked[groove_single_expert + voltage],
-                            "stream": unpacked[groove_single_expert + stream],
-                            "air": unpacked[groove_single_expert + air],
-                            "chaos": unpacked[groove_single_expert + chaos],
-                            "freeze": unpacked[groove_single_expert + freeze],
-                        },
-                        "challenge": {
-                            "voltage": unpacked[groove_single_challenge + voltage],
-                            "stream": unpacked[groove_single_challenge + stream],
-                            "air": unpacked[groove_single_challenge + air],
-                            "chaos": unpacked[groove_single_challenge + chaos],
-                            "freeze": unpacked[groove_single_challenge + freeze],
-                        },
-                    },
-                    "double": {
-                        "beginner": {
-                            "voltage": 0,
-                            "stream": 0,
-                            "air": 0,
-                            "chaos": 0,
-                            "freeze": 0,
-                        },
-                        "basic": {
-                            "voltage": unpacked[groove_double_basic + voltage],
-                            "stream": unpacked[groove_double_basic + stream],
-                            "air": unpacked[groove_double_basic + air],
-                            "chaos": unpacked[groove_double_basic + chaos],
-                            "freeze": unpacked[groove_double_basic + freeze],
-                        },
-                        "difficult": {
-                            "voltage": unpacked[groove_double_difficult + voltage],
-                            "stream": unpacked[groove_double_difficult + stream],
-                            "air": unpacked[groove_double_difficult + air],
-                            "chaos": unpacked[groove_double_difficult + chaos],
-                            "freeze": unpacked[groove_double_difficult + freeze],
-                        },
-                        "expert": {
-                            "voltage": unpacked[groove_double_expert + voltage],
-                            "stream": unpacked[groove_double_expert + stream],
-                            "air": unpacked[groove_double_expert + air],
-                            "chaos": unpacked[groove_double_expert + chaos],
-                            "freeze": unpacked[groove_double_expert + freeze],
-                        },
-                        "challenge": {
-                            "voltage": unpacked[groove_double_challenge + voltage],
-                            "stream": unpacked[groove_double_challenge + stream],
-                            "air": unpacked[groove_double_challenge + air],
-                            "chaos": unpacked[groove_double_challenge + chaos],
-                            "freeze": unpacked[groove_double_challenge + freeze],
-                        },
-                    },
-                },
-                "bpm_min": unpacked[bpm_min_offset],
-                "bpm_max": unpacked[bpm_max_offset],
-                "folder": folder_start - chunk[folder_offset],
-            }
-            songs.append(songinfo)
-        return songs
+                        "bpm_min": unpacked[config.bpm_min_offset],
+                        "bpm_max": unpacked[config.bpm_max_offset],
+                        "folder": config.folder_start - chunk[config.folder_offset],
+                    }
+                    songs.append(songinfo)
+
+                # If we got here, that means we ran into no issues and didn't have to attempt another offset.
+                print("Successfully parsed game DB!")
+
+                return songs
+            except (UnicodeError, InvalidOffsetException):
+                # These offsets are possibly not correct, so try the next configuration.
+                print("Failed to parse game DB using current inferred data version!")
+                pass
+
+        raise CLIException(
+            f"Could not determine correct binary parser configuration for DDR version {self.version}"
+        )
 
     def hydrate(self, songs: List[Dict[str, Any]], infile: str) -> List[Dict[str, Any]]:
         tree = ET.parse(infile)
@@ -2785,7 +3935,7 @@ class ImportDDR(ImportBase):
         if "data/gamedata/musicdb.xml" in arc.filenames:
             xmldata = arc.read_file("data/gamedata/musicdb.xml")
         else:
-            raise Exception("Invalid .arc file provided!")
+            raise CLIException("Invalid .arc file provided!")
 
         xml = xmldata.decode("utf-8")
         root = ET.fromstring(xml)
@@ -3130,7 +4280,7 @@ class ImportSDVX(ImportBase):
         elif actual_version == VersionConstants.SDVX_EXCEED_GEAR:
             self.charts = [0, 1, 2, 3, 4]
         else:
-            raise Exception(
+            raise CLIException(
                 "Unsupported SDVX version, expected one of the following: 1, 2, 3, 4!"
             )
 
@@ -3143,12 +4293,16 @@ class ImportSDVX(ImportBase):
 
         pe = PEFile(data)
 
+        # Ideally we would have multiple configurations supported here, like we do for DDR,
+        # Pop'n, IIDX QPros and Reflec Beat. However, the chances that somebody is trying to
+        # import non-final SDVX Booth catalog items is low enough that it doesn't seem worth
+        # it to try to support this.
         if self.version == VersionConstants.SDVX_BOOTH:
             offset = 0xFFF28
             size = 163
             stride = 40
         else:
-            raise Exception("Unsupported version for catalog scrape!")
+            raise CLIException("Unsupported version {self.version} for catalog scrape!")
 
         def read_string(spot: int) -> str:
             # First, translate load offset in memory to disk offset
@@ -3219,7 +4373,7 @@ class ImportSDVX(ImportBase):
                 except (TypeError, ValueError):
                     pass
             else:
-                raise Exception(
+                raise CLIException(
                     f"Cannot import appeal cards for SDVX version {self.version}"
                 )
 
@@ -3496,7 +4650,7 @@ class ImportMuseca(ImportBase):
         ]:
             self.charts = [0, 1, 2, 3]
         else:
-            raise Exception(
+            raise CLIException(
                 "Unsupported Museca version, expected one of the following: 1, 1+1/2, plus!"
             )
 
@@ -3616,6 +4770,37 @@ class ImportMuseca(ImportBase):
             self.finish_batch()
 
 
+class ReflecBeatScrapeConfiguration:
+    def __init__(
+        self,
+        *,
+        version: str,
+        offset: int,
+        stride: int,
+        max_songs: int,
+        max_difficulties: int,
+        song_offset: int,
+        song_length: int,
+        artist_offset: Optional[int],
+        artist_length: Optional[int],
+        chart_offset: int,
+        chart_length: int,
+        difficulties_offset: int,
+    ) -> None:
+        self.version = version
+        self.offset = offset
+        self.stride = stride
+        self.max_songs = max_songs
+        self.max_difficulties = max_difficulties
+        self.song_offset = song_offset
+        self.song_length = song_length
+        self.artist_offset = artist_offset
+        self.artist_length = artist_length
+        self.chart_offset = chart_offset
+        self.chart_length = chart_length
+        self.difficulties_offset = difficulties_offset
+
+
 class ImportReflecBeat(ImportBase):
     def __init__(
         self,
@@ -3638,7 +4823,7 @@ class ImportReflecBeat(ImportBase):
             }[version]
             self.charts = [0, 1, 2, 3]
         else:
-            raise Exception(
+            raise CLIException(
                 "Unsupported ReflecBeat version, expected one of the following: 1, 2, 3, 4, 5, 6"
             )
 
@@ -3651,94 +4836,119 @@ class ImportReflecBeat(ImportBase):
             data = myfile.read()
             myfile.close()
 
+        configurations: List[ReflecBeatScrapeConfiguration] = []
         if self.version == VersionConstants.REFLEC_BEAT:
             # Based on KBR:A:A:A:2011112300
-            offset = 0xBFBD0
-            stride = 280
-            max_songs = 93
-            max_difficulties = 3
-
-            song_offset = 0x4C
-            song_length = 0x40
-            # Artists aren't included in this mix.
-            artist_offset = None
-            artist_length = None
-            chart_offset = 0xD5
-            chart_length = 0x20
-            difficulties_offset = 0xD2
+            configurations.append(
+                ReflecBeatScrapeConfiguration(
+                    version="KBR:A:A:A:2011112300",
+                    offset=0xBFBD0,
+                    stride=280,
+                    max_songs=93,
+                    max_difficulties=3,
+                    song_offset=0x4C,
+                    song_length=0x40,
+                    # Artists aren't included in this mix.
+                    artist_offset=None,
+                    artist_length=None,
+                    chart_offset=0xD5,
+                    chart_length=0x20,
+                    difficulties_offset=0xD2,
+                )
+            )
         elif self.version == VersionConstants.REFLEC_BEAT_LIMELIGHT:
             # Based on LBR:A:A:A:2012082900
-            offset = 0x132C48
-            stride = 220
-            max_songs = 191
-            max_difficulties = 3
-
-            song_offset = 0x4C
-            song_length = 0x40
-            # Artists aren't included in this mix.
-            artist_offset = None
-            artist_length = None
-            chart_offset = 0x9B
-            chart_length = 0x20
-            difficulties_offset = 0x98
+            configurations.append(
+                ReflecBeatScrapeConfiguration(
+                    version="LBR:A:A:A:2012082900",
+                    offset=0x132C48,
+                    stride=220,
+                    max_songs=191,
+                    max_difficulties=3,
+                    song_offset=0x4C,
+                    song_length=0x40,
+                    # Artists aren't included in this mix.
+                    artist_offset=None,
+                    artist_length=None,
+                    chart_offset=0x9B,
+                    chart_length=0x20,
+                    difficulties_offset=0x98,
+                )
+            )
         elif self.version == VersionConstants.REFLEC_BEAT_COLETTE:
             # Based on MBR:J:A:A:2014011600
-            offset = 0x1E6880
-            stride = 468
-            max_songs = 443
-            max_difficulties = 3
-
-            song_offset = 0x34
-            song_length = 0x80
-            artist_offset = 0xB4
-            artist_length = 0x80
-            chart_offset = 0x1B4
-            chart_length = 0x20
-            difficulties_offset = 0x1A8
+            configurations.append(
+                ReflecBeatScrapeConfiguration(
+                    version="MBR:J:A:A:2014011600",
+                    offset=0x1E6880,
+                    stride=468,
+                    max_songs=443,
+                    max_difficulties=3,
+                    song_offset=0x34,
+                    song_length=0x80,
+                    artist_offset=0xB4,
+                    artist_length=0x80,
+                    chart_offset=0x1B4,
+                    chart_length=0x20,
+                    difficulties_offset=0x1A8,
+                )
+            )
         elif self.version == VersionConstants.REFLEC_BEAT_GROOVIN:
             # Based on MBR:J:A:A:2015102100
-            offset = 0x212EC0
-            stride = 524
-            max_songs = 698
-            max_difficulties = 4
-
-            song_offset = 0x3C
-            song_length = 0x80
-            artist_offset = 0xBC
-            artist_length = 0x80
-            chart_offset = 0x1E8
-            chart_length = 0x20
-            difficulties_offset = 0x1D0
+            configurations.append(
+                ReflecBeatScrapeConfiguration(
+                    version="MBR:J:A:A:2015102100",
+                    offset=0x212EC0,
+                    stride=524,
+                    max_songs=698,
+                    max_difficulties=4,
+                    song_offset=0x3C,
+                    song_length=0x80,
+                    artist_offset=0xBC,
+                    artist_length=0x80,
+                    chart_offset=0x1E8,
+                    chart_length=0x20,
+                    difficulties_offset=0x1D0,
+                )
+            )
         elif self.version == VersionConstants.REFLEC_BEAT_VOLZZA:
             # Based on MBR:J:A:A:2016030200
-            offset = 0x1A0EC8
-            stride = 552
-            max_songs = 805
-            max_difficulties = 4
-
-            song_offset = 0x38
-            song_length = 0x80
-            artist_offset = 0xB8
-            artist_length = 0x80
-            chart_offset = 0x1E4
-            chart_length = 0x20
-            difficulties_offset = 0x1CC
+            configurations.append(
+                ReflecBeatScrapeConfiguration(
+                    version="MBR:J:A:A:2016030200",
+                    offset=0x1A0EC8,
+                    stride=552,
+                    max_songs=805,
+                    max_difficulties=4,
+                    song_offset=0x38,
+                    song_length=0x80,
+                    artist_offset=0xB8,
+                    artist_length=0x80,
+                    chart_offset=0x1E4,
+                    chart_length=0x20,
+                    difficulties_offset=0x1CC,
+                )
+            )
         elif self.version == VersionConstants.REFLEC_BEAT_VOLZZA_2:
             # Based on MBR:J:A:A:2016100400
-            offset = 0x1CBC68
-            stride = 552
-            max_songs = 850
-            max_difficulties = 4
-
-            song_offset = 0x38
-            song_length = 0x80
-            artist_offset = 0xB8
-            artist_length = 0x80
-            chart_offset = 0x1E4
-            chart_length = 0x20
-            difficulties_offset = 0x1CC
+            configurations.append(
+                ReflecBeatScrapeConfiguration(
+                    version="MBR:J:A:A:2016100400",
+                    offset=0x1CBC68,
+                    stride=552,
+                    max_songs=850,
+                    max_difficulties=4,
+                    song_offset=0x38,
+                    song_length=0x80,
+                    artist_offset=0xB8,
+                    artist_length=0x80,
+                    chart_offset=0x1E4,
+                    chart_length=0x20,
+                    difficulties_offset=0x1CC,
+                )
+            )
         else:
-            raise Exception(f"Unsupported ReflecBeat version {self.version}")
+            raise CLIException(f"Unsupported ReflecBeat version {self.version}")
 
         def convert_string(inb: bytes) -> str:
             end = None
@@ -3747,7 +4957,7 @@ class ImportReflecBeat(ImportBase):
                     end = i
                     break
             if end is None:
-                raise Exception("Invalid string!")
+                raise UnicodeError("Invalid string!")
             if end == 0:
                 return ""
 
@@ -3766,48 +4976,80 @@ class ImportReflecBeat(ImportBase):
 
             return folder
 
-        songs = []
-        for i in range(max_songs):
-            start = offset + (stride * i)
-            end = start + stride
-            songdata = data[start:end]
+        for config in configurations:
+            try:
+                print(f"Trying configuration for game version {config.version}...")
 
-            title = convert_string(songdata[song_offset : (song_offset + song_length)])
-            if artist_offset is None:
-                artist = ""
-            else:
-                artist = convert_string(
-                    songdata[artist_offset : (artist_offset + artist_length)]
-                )
-            if title == "" and artist == "":
-                continue
-            songid = struct.unpack("<I", songdata[0:4])[0]
-            chart = convert_string(
-                songdata[chart_offset : (chart_offset + chart_length)]
-            )
-            difficulties = [
-                d
-                for d in songdata[
-                    difficulties_offset : (difficulties_offset + max_difficulties)
-                ]
-            ]
-            difficulties = [0 if d == 255 else d for d in difficulties]
-            folder = convert_version(songid, int(chart[0]))
+                songs = []
+                for i in range(config.max_songs):
+                    start = config.offset + (config.stride * i)
+                    end = start + config.stride
+                    songdata = data[start:end]
 
-            while len(difficulties) < 4:
-                difficulties.append(0)
+                    title = convert_string(
+                        songdata[
+                            config.song_offset : (
+                                config.song_offset + config.song_length
+                            )
+                        ]
+                    )
+                    if config.artist_offset is None:
+                        artist = ""
+                    else:
+                        artist = convert_string(
+                            songdata[
+                                config.artist_offset : (
+                                    config.artist_offset + config.artist_length
+                                )
+                            ]
+                        )
+                    if title == "" and artist == "":
+                        continue
+                    songid = struct.unpack("<I", songdata[0:4])[0]
+                    chart = convert_string(
+                        songdata[
+                            config.chart_offset : (
+                                config.chart_offset + config.chart_length
+                            )
+                        ]
+                    )
+                    difficulties = [
+                        d
+                        for d in songdata[
+                            config.difficulties_offset : (
+                                config.difficulties_offset + config.max_difficulties
+                            )
+                        ]
+                    ]
+                    difficulties = [0 if d == 255 else d for d in difficulties]
+                    folder = convert_version(songid, int(chart[0]))
 
-            songs.append(
-                {
-                    "id": songid,
-                    "title": title,
-                    "artist": artist,
-                    "chartid": chart[:4],
-                    "difficulties": difficulties,
-                    "folder": folder,
-                }
-            )
-        return songs
+                    while len(difficulties) < 4:
+                        difficulties.append(0)
+
+                    songs.append(
+                        {
+                            "id": songid,
+                            "title": title,
+                            "artist": artist,
+                            "chartid": chart[:4],
+                            "difficulties": difficulties,
+                            "folder": folder,
+                        }
+                    )
+
+                # If we got here, that means we ran into no issues and didn't have to attempt another offset.
+                print("Successfully parsed game DB!")
+
+                return songs
+            except (UnicodeError, InvalidOffsetException):
+                # These offsets are possibly not correct, so try the next configuration.
+                print("Failed to parse game DB using current inferred data version!")
+                pass
+
+        raise CLIException(
+            f"Could not determine correct binary parser configuration for ReflecBeat version {self.version}"
+        )
 
     def lookup(self, server: str, token: str) -> List[Dict[str, Any]]:
         # Grab music info from remote server
@@ -3912,7 +5154,7 @@ class ImportDanceEvolution(ImportBase):
         if version in ["1"]:
             actual_version = 1
         else:
-            raise Exception(
+            raise CLIException(
                 "Unsupported Dance Evolution version, expected one of the following: 1"
             )
 
@@ -4029,7 +5271,7 @@ class ImportDanceEvolution(ImportBase):
             self.finish_batch()
 
 
-if __name__ == "__main__":
+def main() -> None:
     parser = argparse.ArgumentParser(description="Import Game Music DB")
     parser.add_argument(
         "--series",
@@ -4111,15 +5353,22 @@ if __name__ == "__main__":
         type=str,
         help="The access token to use with the remote BEMAPI server.",
     )
+    parser.add_argument(
+        "--folder",
+        dest="folder",
+        action="store",
+        type=str,
+        help="The path were a folder of files are stored.",
+    )
 
     # Parse args, validate invariants.
     args = parser.parse_args()
     if (args.token and not args.server) or (args.server and not args.token):
-        raise Exception("Must specify both --server and --token together!")
+        raise CLIException("Must specify both --server and --token together!")
     if (args.csv or args.tsv or args.xml or args.bin or args.assets) and (
         args.server or args.token
     ):
-        raise Exception(
+        raise CLIException(
             "Cannot specify both a remote server and a local file to read from!"
         )
 
@@ -4137,10 +5386,21 @@ if __name__ == "__main__":
         popn = ImportPopn(config, args.version, args.no_combine, args.update)
         if args.bin:
             songs = popn.scrape(args.bin)
+            if args.xml:
+                songs = popn.scrape_xml(args.xml, songs)
+            elif args.folder:
+                files = Path(args.folder).glob("*xml")
+                for filename in files:
+                    try:
+                        songs = popn.scrape_xml(filename, songs)
+                    except Exception:
+                        # We should really be just catching invalid XML but I didn't write this
+                        # nor do I have omnimix so I can't really test what it should do.
+                        raise CLIException(f"Invalid XML ({filename})")
         elif args.server and args.token:
             songs = popn.lookup(args.server, args.token)
         else:
-            raise Exception(
+            raise CLIException(
                 "No game DLL provided and no remote server specified! Please "
                 + "provide either a --bin or a --server and --token option!"
             )
@@ -4160,7 +5420,7 @@ if __name__ == "__main__":
             elif args.server and args.token:
                 songs, emblems = jubeat.lookup(args.server, args.token)
             else:
-                raise Exception(
+                raise CLIException(
                     "No music_info.xml or TSV provided and no remote server specified! Please "
                     + "provide either a --xml, --tsv or a --server and --token option!"
                 )
@@ -4181,7 +5441,7 @@ if __name__ == "__main__":
             elif args.server and args.token:
                 songs, qpros = iidx.lookup(args.server, args.token)
             else:
-                raise Exception(
+                raise CLIException(
                     "No music_data.bin or TSV provided and no remote server specified! Please "
                     + "provide either a --bin, --tsv or a --server and --token option!"
                 )
@@ -4196,14 +5456,14 @@ if __name__ == "__main__":
         else:
             if args.version == "16":
                 if args.bin is None:
-                    raise Exception("No startup.arc provided!")
+                    raise CLIException("No startup.arc provided!")
                 # DDR Ace has a different format altogether
                 songs = ddr.parse_xml(args.bin)
             else:
                 if args.bin is None:
-                    raise Exception("No game DLL provided!")
+                    raise CLIException("No game DLL provided!")
                 if args.xml is None:
-                    raise Exception("No game music XML provided!")
+                    raise CLIException("No game music XML provided!")
                 # DDR splits the music DB between the DLL and external XML
                 # (Why??), so we must first scrape then hydrate with extra
                 # data to get the full DB.
@@ -4218,7 +5478,7 @@ if __name__ == "__main__":
             sdvx.import_from_server(args.server, args.token)
         else:
             if args.xml is None and args.bin is None and args.csv is None:
-                raise Exception(
+                raise CLIException(
                     "No XML file or game DLL or appeal card CSV provided and "
                     + "no remote server specified! Please provide either a --xml, "
                     + "--bin, --csv or a --server and --token option!"
@@ -4238,7 +5498,7 @@ if __name__ == "__main__":
         elif args.xml is not None:
             museca.import_music_db(args.xml)
         else:
-            raise Exception(
+            raise CLIException(
                 "No music-info.xml provided and no remote server specified! "
                 + "Please provide either a --xml or a --server and --token option!"
             )
@@ -4251,7 +5511,7 @@ if __name__ == "__main__":
         elif args.server and args.token:
             songs = reflec.lookup(args.server, args.token)
         else:
-            raise Exception(
+            raise CLIException(
                 "No game DLL provided and no remote server specified! "
                 + "Please provide either a --bin or a --server and --token option!"
             )
@@ -4267,7 +5527,7 @@ if __name__ == "__main__":
         elif args.bin is not None:
             songs = danevo.scrape(args.bin)
         else:
-            raise Exception(
+            raise CLIException(
                 "No resource_lists.arc provided and no remote server "
                 + "specified! Please provide either a --bin or a "
                 + "--server and --token option!",
@@ -4276,4 +5536,13 @@ if __name__ == "__main__":
         danevo.close()
 
     else:
-        raise Exception("Unsupported game series!")
+        raise CLIException("Unsupported game series!")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except CLIException as e:
+        # We terminate early with these when we want to show the user a message, but
+        # not scare them with a full traceback.
+        print(str(e))

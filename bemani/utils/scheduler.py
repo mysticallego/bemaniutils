@@ -21,7 +21,7 @@ from bemani.frontend.reflec import ReflecBeatCache
 from bemani.frontend.museca import MusecaCache
 from bemani.common import GameConstants, Time
 from bemani.data import Config, Data
-from bemani.utils.config import load_config
+from bemani.utils.config import load_config, instantiate_cache
 
 
 def run_scheduled_work(config: Config) -> None:
@@ -98,6 +98,9 @@ if __name__ == "__main__":
     load_config(args.config, config)
     if args.read_only:
         config["database"]["read_only"] = True
+
+    # Set up production cache.
+    instantiate_cache(config)
 
     # Run out of band work
     run_scheduled_work(config)
