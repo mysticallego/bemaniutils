@@ -1,13 +1,13 @@
 # Core database settings, required so that the system can persist scores and accounts.
 database:
     # IP or DNS entry for MySQL instance.
-    address: "localhost"
+    address: "localhost:3306"
     # Database that will be used.
-    database: "bemani"
+    database: "bemani-gfdm"
     # User who has full credentials to the above DB.
-    user: "bemani"
+    user: "root"
     # Password of said user.
-    password: "bemani"
+    password: "as sysdba"
     # Force the network to read-only mode, refusing to write to the DB
     # except for creating/destroying frontend sessions to enable login.
     # Set this to False or delete this to run in production mode.
@@ -17,12 +17,12 @@ database:
 # routing and server URLs.
 server:
     # Advertised server IP or DNS entry games will connect to.
-    address: "192.168.0.1"
+    address: "192.168.3.15"
     # Advertised keepalive address, must be globally pingable. Delete
     # this to use the address above instead of a unique keepalive address.
     keepalive: "127.0.0.1"
     # What port on the above address games will connect to.
-    port: 80
+    port: 5730
     # Whether games should connect over HTTPS.
     https: False
     # Advertised frontend URI. Delete this to mask the frontend address.
