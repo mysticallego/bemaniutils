@@ -90,18 +90,6 @@ var profile_view = createReactClass({
                             <br/>
                             : null
                         }
-                        <a href={Link.get('tachi-GF')}>{window.own_profile ?
-                            <span>export your GuitarFreaks records</span>
-                            : null
-                        }</a>
-                        {window.own_profile ? 
-                            <span className="separator">&middot;</span>
-                            : null
-                        }
-                        <a href={Link.get('tachi-DM')}>{window.own_profile ?
-                            <span>export your Drummania records</span>
-                            : null
-                        }</a>
                     </div>
                 </div>
             );

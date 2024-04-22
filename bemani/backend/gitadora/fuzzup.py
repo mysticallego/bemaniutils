@@ -437,22 +437,8 @@ class GitadoraFuzzUp(
         root.add_child(ea_pass_propel)
         ea_pass_propel.add_child(Node.u8("term", 1))
 
-        # demomusic
-        demomusic_dict = [
-            (2691, 1, 65628, 99629),
-            (2692, 1, 49402, 80011),
-            (2690, 1, 38988, 96386),
-        ]
         demomusic = Node.void("demomusic")
         root.add_child(demomusic)
-        demomusic.set_attribute("nr", str(len(demomusic_dict)))
-        for demomusic_dict_item in demomusic_dict:
-            demomusic_music = Node.void("music")
-            demomusic.add_child(demomusic_music)
-            demomusic_music.add_child(Node.s32("musicid", demomusic_dict_item[0]))
-            demomusic_music.add_child(Node.s16("seq", demomusic_dict_item[1]))
-            demomusic_music.add_child(Node.u32("start_addr", demomusic_dict_item[2]))
-            demomusic_music.add_child(Node.u32("end_addr", demomusic_dict_item[3]))
 
         # monthly_skill
         monthly_skill = Node.void("monthly_skill")
@@ -476,48 +462,6 @@ class GitadoraFuzzUp(
         termdata.add_child(Node.u8("term", 0))
         termdata.add_child(Node.u64("start_date_ms", 1546268400000))
         termdata.add_child(Node.u64("end_date_ms", 1577804399000))
-        # second. otobear birthday
-        termdata = Node.void("termdata")
-        general_term.add_child(termdata)
-        termdata.add_child(Node.string("type", "general_otobear_birthday"))
-        termdata.add_child(Node.u8("term", 0))
-        termdata.add_child(Node.u64("start_date_ms", 1604156400000))
-        termdata.add_child(Node.u64("end_date_ms", 1605020400000))
-        # third. general paseli lottery info 2020.
-        termdata = Node.void("termdata")
-        general_term.add_child(termdata)
-        termdata.add_child(Node.string("type", "general_paseli_lottery_info_2020"))
-        termdata.add_child(Node.u8("term", 1))
-        termdata.add_child(Node.u64("start_date_ms", 1599613200000))
-        termdata.add_child(Node.u64("end_date_ms", 18446744073709551615))
-        # fourth. general song battle 2021
-        termdata = Node.void("termdata")
-        general_term.add_child(termdata)
-        termdata.add_child(Node.string("type", "general_song_battle_2021"))
-        termdata.add_child(Node.u8("term", 1))
-        termdata.add_child(Node.u64("start_date_ms", 1599613200000))
-        termdata.add_child(Node.u64("end_date_ms", 18446744073709551615))
-        # fifth. general song battle unlock
-        termdata = Node.void("termdata")
-        general_term.add_child(termdata)
-        termdata.add_child(Node.string("type", "general_song_battle_2021_unlock"))
-        termdata.add_child(Node.u8("term", 1))
-        termdata.add_child(Node.u64("start_date_ms", 1599613200000))
-        termdata.add_child(Node.u64("end_date_ms", 18446744073709551615))
-        # sixth. general guitar controller reward 2021
-        termdata = Node.void("termdata")
-        general_term.add_child(termdata)
-        termdata.add_child(Node.string("type", "general_guitar_controller_reward_2021"))
-        termdata.add_child(Node.u8("term", 1))
-        termdata.add_child(Node.u64("start_date_ms", 1599613200000))
-        termdata.add_child(Node.u64("end_date_ms", 18446744073709551615))
-        # seventh. bpl 2021
-        termdata = Node.void("termdata")
-        general_term.add_child(termdata)
-        termdata.add_child(Node.string("type", "general_bpl_viewing_2021"))
-        termdata.add_child(Node.u8("term", 1))
-        termdata.add_child(Node.u64("start_date_ms", 1599613200000))
-        termdata.add_child(Node.u64("end_date_ms", 18446744073709551615))
 
         # livehouse
         livehouse = Node.void("livehouse")

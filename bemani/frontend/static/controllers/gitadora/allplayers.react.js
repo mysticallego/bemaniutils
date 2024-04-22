@@ -57,17 +57,39 @@ var all_players = createReactClass({
                                 }.bind(this),
                             },
                             {
-                                name: 'Player Skills',
+                                name: 'GF Skills',
                                 render: function(userid) {
                                     var player = this.state.players[userid];
-                                    var player_skill = player.gf_skills / 100 + player.dm_skills / 100;
-                                    return player_skill.toFixed(2);
+                                    return (player.gf_skills / 100).toFixed(2);
                                 }.bind(this),
                                 sort: function(aid, bid) {
                                     var a = this.state.players[aid];
                                     var b = this.state.players[bid];
-                                    var b_skill = b.gf_skills / 100 + b.dm_skills / 100;
-                                    return a.extid.localeCompare(b_skill.toFixed(2));
+                                    return a.gf_skills - b.gf_skills;
+                                }.bind(this),
+                            },
+                            {
+                                name: 'DM Skills',
+                                render: function(userid) {
+                                    var player = this.state.players[userid];
+                                    return (player.dm_skills / 100).toFixed(2);
+                                }.bind(this),
+                                sort: function(aid, bid) {
+                                    var a = this.state.players[aid];
+                                    var b = this.state.players[bid];
+                                    return a.dm_skills - b.dm_skills;
+                                }.bind(this),
+                            },
+                            {
+                                name: 'ALL Skills',
+                                render: function(userid) {
+                                    var player = this.state.players[userid];
+                                    return ((player.dm_skills + player.gf_skills) / 100).toFixed(2);
+                                }.bind(this),
+                                sort: function(aid, bid) {
+                                    var a = this.state.players[aid];
+                                    var b = this.state.players[bid];
+                                    return (a.dm_skills + a.gf_skills) - (b.dm_skills + b.gf_skills);
                                 }.bind(this),
                             },
                             {
