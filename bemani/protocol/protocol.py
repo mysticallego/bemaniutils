@@ -20,9 +20,9 @@ class EAmuseProtocol:
     A wrapper object that encapsulates encoding/decoding the E-Amusement protocol by Konami.
     """
 
-    SHARED_SECRET: Final[
-        bytes
-    ] = b"\x69\xD7\x46\x27\xD9\x85\xEE\x21\x87\x16\x15\x70\xD0\x8D\x93\xB1\x24\x55\x03\x5B\x6D\xF0\xD8\x20\x5D\xF5"
+    SHARED_SECRET: Final[bytes] = (
+        b"\x69\xD7\x46\x27\xD9\x85\xEE\x21\x87\x16\x15\x70\xD0\x8D\x93\xB1\x24\x55\x03\x5B\x6D\xF0\xD8\x20\x5D\xF5"
+    )
 
     XML: Final[int] = 1
     BINARY: Final[int] = 2
@@ -88,10 +88,7 @@ class EAmuseProtocol:
         if encryption_key:
             # Key is concatenated with the shared secret above
             version, first, second = encryption_key.split("-")
-            key = (
-                binascii.unhexlify((first + second).encode("ascii"))
-                + EAmuseProtocol.SHARED_SECRET
-            )
+            key = binascii.unhexlify((first + second).encode("ascii")) + EAmuseProtocol.SHARED_SECRET
 
             # Next, key is sent through MD5 to derive the real key
             m = hashlib.md5()
@@ -232,9 +229,7 @@ class EAmuseProtocol:
         else:
             raise EAmuseException(f"Invalid packet encoding {packet_encoding}")
 
-    def decode(
-        self, compression: Optional[str], encryption: Optional[str], data: bytes
-    ) -> Node:
+    def decode(self, compression: Optional[str], encryption: Optional[str], data: bytes) -> Node:
         """
         Given a request with optional compression and encryption set, decrypt,
         decompress and decode the data, returning a parsed tree.

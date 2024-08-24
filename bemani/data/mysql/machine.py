@@ -1,6 +1,6 @@
-from sqlalchemy import Table, Column, UniqueConstraint  # type: ignore
-from sqlalchemy.types import String, Integer, JSON  # type: ignore
-from sqlalchemy.dialects.mysql import BIGINT as BigInteger  # type: ignore
+from sqlalchemy import Table, Column, UniqueConstraint
+from sqlalchemy.types import String, Integer, JSON
+from sqlalchemy.dialects.mysql import BIGINT as BigInteger
 from typing import Optional, Dict, List, Tuple, Any
 from typing_extensions import Final
 
@@ -71,9 +71,7 @@ arcade_settings = Table(
     Column("version", Integer, nullable=False),
     Column("type", String(64), nullable=False),
     Column("data", JSON, nullable=False),
-    UniqueConstraint(
-        "arcadeid", "game", "version", "type", name="arcadeid_game_version_type"
-    ),
+    UniqueConstraint("arcadeid", "game", "version", "type", name="arcadeid_game_version_type"),
     mysql_charset="utf8mb4",
 )
 

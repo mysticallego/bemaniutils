@@ -46,7 +46,7 @@ def before_request() -> None:
             authtype = None
             authtoken = None
 
-        if authtype.lower() == "token":
+        if authtype is not None and authtoken is not None and authtype.lower() == "token":
             g.authorized = g.data.local.api.validate_client(authtoken)
 
 
@@ -91,9 +91,7 @@ def jsonify(func: Callable) -> Callable:
 
 @app.errorhandler(Exception)
 def server_exception(exception: Any) -> Response:
-    stack = "".join(
-        traceback.format_exception(type(exception), exception, exception.__traceback__)
-    )
+    stack = "".join(traceback.format_exception(type(exception), exception, exception.__traceback__))
     print(stack)
     try:
         g.data.local.network.put_event(
