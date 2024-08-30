@@ -213,6 +213,7 @@ def lookup(protoversion: str, requestgame: str, requestversion: str) -> Dict[str
         ("popnmusic", GameConstants.POPN_MUSIC),
         ("reflecbeat", GameConstants.REFLEC_BEAT),
         ("soundvoltex", GameConstants.SDVX),
+        ("gitadora", GameConstants.GITADORA),
     ]:
         if constant in g.config.support:
             gamemapping[gameid] = constant
@@ -295,6 +296,17 @@ def lookup(protoversion: str, requestgame: str, requestversion: str) -> Dict[str
                 "4": VersionConstants.SDVX_HEAVENLY_HAVEN,
                 "6": VersionConstants.SDVX_EXCEED_GEAR,
             },
+            GameConstants.GITADORA: {
+                "1": VersionConstants.GITADORA,
+                "2": VersionConstants.GITADORA_OVERDRIVE,
+                "3": VersionConstants.GITADORA_TRIBOOST,
+                "4": VersionConstants.GITADORA_TRIBOOST_RE_EVOLVE,
+                "5": VersionConstants.GITADORA_MATIXX,
+                "6": VersionConstants.GITADORA_EXCHAIN,
+                "7": VersionConstants.GITADORA_NEXTAGE,
+                "8": VersionConstants.GITADORA_HIGH_VOLTAGE,
+                "9": VersionConstants.GITADORA_FUZZUP,
+            }
         }
         .get(game, {})
         .get(requestversion)
