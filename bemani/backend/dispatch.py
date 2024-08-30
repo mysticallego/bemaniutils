@@ -157,6 +157,15 @@ class Dispatch:
                 handler = None
             if handler is not None:
                 response = handler(request)
+        
+        if response is None:
+            # hotfix for plural mismatch
+            try:
+                handler = getattr(game, f"handle_{request.name}_request")
+            except AttributeError:
+                handler = None
+            if handler is not None:
+                response = handler(request)
 
         if response is None:
             # Unrecognized handler

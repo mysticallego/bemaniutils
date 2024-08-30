@@ -600,7 +600,7 @@ class GitadoraFuzzUp(
 
         return root
     
-    def handle_fuzzup_gametop_request(self, request: Node) -> Node:
+    def handle_fuzzup_gametop_requests(self, request: Node) -> Node:
         refid = request.child_value("player/refid")
         root = self.get_profile_by_refid(refid)
         if root is None:
@@ -653,7 +653,7 @@ class GitadoraFuzzUp(
         root.add_child(Node.s8("result", 1))
         return root
 
-    def handle_fuzzup_playablemusic_request(self, request: Node) -> Node:
+    def handle_fuzzup_playablemusic_requests(self, request: Node) -> Node:
         # TO DO: wait for final data. update hot music.
         root = Node.void("fuzzup_playablemusic")
         # hot
