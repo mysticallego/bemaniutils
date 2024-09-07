@@ -420,7 +420,7 @@ class GitadoraFuzzUp(
         # battle
         battle = Node.void("battle")
         root.add_child(battle)
-        battle.add_child(Node.u8("term", 0))
+        battle.add_child(Node.u8("term", 1))
 
         # battle_chara
         battle_chara = Node.void("battle_chara")
@@ -689,6 +689,25 @@ class GitadoraFuzzUp(
 
     def handle_fuzzup_processing_report_request(self, request: Node) -> Node:
         return Node.void("fuzzup_processing_report")
+    
+    def handle_lobby_request_request(self, request: Node) -> Node:
+        root = Node.void("lobby")
+        
+        # add battle request data.
+        lobby_address_ip = str(request.child("lobbydata/address").child_value("ip"))
+        lobby_check_attestid = str(request.child("lobbydata/check").child_value("attestid"))
+        lobbydata = Node.void("lobbydata")
+        root.add_child(lobbydata)
+        candidate = Node.void("candidate")
+        lobbydata.add_child(candidate)
+        address = Node.void("address")
+        candidate.add_child(address)
+        address.add_child(Node.string("ip",lobby_address_ip))
+        check = Node.void("check")
+        candidate.add_child(check)
+        check.add_child(Node.string("attestid", lobby_check_attestid))
+            
+        return root
     
     def format_profile(self, userid: UserID, profile: Profile) -> Node:
         # Look up play stats we bridge to every mix
