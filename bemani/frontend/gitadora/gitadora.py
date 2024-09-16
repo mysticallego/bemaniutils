@@ -4,7 +4,7 @@ from typing import Any, Dict, Iterator, List, Tuple
 from flask_caching import Cache  # type: ignore
 
 from bemani.backend.gitadora import GitadoraFactory, GitadoraBase
-from bemani.common import Profile, ValidatedDict, GameConstants, VersionConstants
+from bemani.common import Profile, ValidatedDict, GameConstants, VersionConstants, DBConstants
 from bemani.data import Attempt, Data, Config, Score, Song, UserID
 from bemani.frontend.base import FrontendBase
 
@@ -100,76 +100,99 @@ class GitadoraFrontend(FrontendBase):
         skill_list: list,
         option_type: str,
     ) -> List[Dict[str, Any]]:
-        dm_chart_index = [6, 7, 8, 9]
-        gf_chart_index = [1, 2, 3, 4, 11, 12, 13, 14]
+        chart_indices = {
+            "dm": [6, 7, 8, 9],
+            "gf": [1, 2, 3, 4, 11, 12, 13, 14],
+        }
+
+        # Determine the chart index type based on option_type
+        if "dm" in option_type:
+            chart_key = "dm"
+            chart_base = 6
+        elif "gf" in option_type:
+            chart_key = "gf"
+            chart_base = 1
+
         skill_list = list(filter(lambda x: x != -1, skill_list))
-        skills = []  # append all skills dict withour update into null.
-        if option_type == "dm_exist" or option_type == "dm_new":
-            for songid in skill_list:
-                skill_index = []  # get the max skill point and each index.
-                skill_prec_index = []  # get the max skill prec and each index
-                music = self.data.local.music.get_song(
-                        game, version, songid, songchart=6
-                    )
-                for index in dm_chart_index:
-                    score = self.data.local.music.get_score(
-                        game, version, userid, songid, index
-                    )
-                    if score is None:
-                        skill_index.append(0)
-                        skill_prec_index.append(-1)
-                    if score is not None:
-                        skill_index.append(score.points)
-                        skill_prec_index.append(score.data.get_int("perc"))
-                skill_index = [skill_index.index(max(skill_index)), max(skill_index)]
-                skill_prec_index = [
-                    skill_prec_index.index(max(skill_prec_index)),
-                    max(skill_prec_index),
-                ]
-                skills.append(
-                    {   
-                        "music_name": music.name,
-                        "music_id": songid,
-                        "chart": GitadoraFrontend.gitadora_chart.get(skill_index[0] + 6),
-                        "skills_point": skill_index[1],
-                        "perc": skill_prec_index[1],
-                    }
-                )
-        if option_type == "gf_exist" or option_type == "gf_new":
-            for songid in skill_list:
-                skill_index = []  # get the max skill point and each index.
-                skill_prec_index = []  # get the max skill prec and each index
-                music = self.data.local.music.get_song(
-                        game, version, songid, songchart=1
-                    )
-                for index in gf_chart_index:
-                    score = self.data.local.music.get_score(
-                        game, version, userid, songid, index
-                    )
-                    if score is None:
-                        skill_index.append(0)
-                        skill_prec_index.append(-1)
-                    if score is not None:
-                        skill_index.append(score.points)
-                        skill_prec_index.append(score.data.get_int("perc"))
-                skill_index = [skill_index.index(max(skill_index)), max(skill_index)]
-                skill_prec_index = [
-                    skill_prec_index.index(max(skill_prec_index)),
-                    max(skill_prec_index),
-                ]
-                if 0 <= skill_index[0] <= 3:
-                    chart = skill_index[0] + 1
-                if 3 < skill_index[0] <= 7:
-                    chart = skill_index[0] + 7
-                skills.append(
-                    {
-                        "music_name": music.name,
-                        "music_id": songid,
-                        "chart": GitadoraFrontend.gitadora_chart.get(chart),
-                        "skills_point": skill_index[1],
-                        "perc": skill_prec_index[1],
-                    },
-                )
+        skills = []
+
+        for songid in skill_list:
+            skill_index = []
+            skill_prec_index = []
+
+            # Get music data for both the original version and OMNIMIX
+            music_base = self.data.local.music.get_song(
+                game, version, songid, songchart=chart_base
+            )
+            music_omni = self.data.local.music.get_song(
+                game, version + DBConstants.OMNIMIX_VERSION_BUMP, songid, songchart=chart_base
+            )
+
+            # If both music_base and music_omni exist, merge their attributes
+            def merge_music_objects(base, omni):
+                # If one of them is None, return the other
+                if not base:
+                    return omni
+                if not omni:
+                    return base
+
+                # Merge by creating a new object that takes attributes from both
+                merged_music = base  # Start with the base music object
+                # Override attributes from omni if they exist
+                for attr in vars(omni):
+                    if getattr(omni, attr) is not None:
+                        setattr(merged_music, attr, getattr(omni, attr))
+                return merged_music
+
+            # Merge music_base and music_omni
+            music = merge_music_objects(music_base, music_omni)
+
+            # Loop through the chart indices
+            for index in chart_indices[chart_key]:
+                # Get score for both base version and OMNIMIX
+                score_base = self.data.local.music.get_score(game, version, userid, songid, index)
+                score_omni = self.data.local.music.get_score(game, version + DBConstants.OMNIMIX_VERSION_BUMP, userid, songid, index)
+
+                # Merge score data
+                score = score_omni if score_omni else score_base
+                
+                # Append score points and percentage
+                if score:
+                    skill_index.append(score.points)
+                    skill_prec_index.append(score.data.get_int("perc"))
+                else:
+                    skill_index.append(0)
+                    skill_prec_index.append(-1)
+
+            # Find the maximum values
+            max_skill_index = max(skill_index)
+            max_prec_index = max(skill_prec_index)
+
+            # Get the index of the maximum skill point and percentage
+            skill_index_info = [skill_index.index(max_skill_index), max_skill_index]
+            skill_prec_info = [skill_prec_index.index(max_prec_index), max_prec_index]
+
+            # Determine the chart for gf
+            if chart_key == "gf":
+                if 0 <= skill_index_info[0] <= 3:
+                    chart = skill_index_info[0] + 1
+                elif 3 < skill_index_info[0] <= 7:
+                    chart = skill_index_info[0] + 7
+            else:
+                chart = skill_index_info[0] + 6
+                
+            music_difficuities = self.data.local.music.get_song(game, version, songid, chart).data.get_int("difficulty")
+
+            # Append the skill data to the list
+            skills.append({
+                "music_name": music.name if music else "Unknown",  # Access attribute with dot notation
+                "music_difficulties": music_difficuities,
+                "music_id": songid,
+                "chart": GitadoraFrontend.gitadora_chart.get(chart),
+                "skills_point": skill_index_info[1],
+                "perc": skill_prec_info[1],
+            })
+        
         return skills
 
     def format_profile(
