@@ -2128,7 +2128,7 @@ class ImportPopn(ImportBase):
                 print("Successfully parsed game DB!")
 
                 return songs
-            except (UnicodeError, InvalidOffsetException):
+            except (UnicodeError, InvalidOffsetException, struct.error):
                 # These offsets are possibly not correct, so try the next configuration.
                 print("Failed to parse game DB using current inferred data version!")
                 pass
@@ -3166,7 +3166,7 @@ class ImportIIDX(ImportBase):
 
                     # We only import one or the other here, I know its a weird function.
                     return [], qpros
-                except (UnicodeError, InvalidOffsetException):
+                except (UnicodeError, InvalidOffsetException, struct.error):
                     # These offsets are possibly not correct, so try the next configuration.
                     print("Failed to parse game DB using current inferred data version!")
                     pass
@@ -3748,7 +3748,7 @@ class ImportDDR(ImportBase):
                 print("Successfully parsed game DB!")
 
                 return songs
-            except (UnicodeError, InvalidOffsetException):
+            except (UnicodeError, InvalidOffsetException, struct.error):
                 # These offsets are possibly not correct, so try the next configuration.
                 print("Failed to parse game DB using current inferred data version!")
                 pass
@@ -4843,7 +4843,7 @@ class ImportReflecBeat(ImportBase):
                 print("Successfully parsed game DB!")
 
                 return songs
-            except (UnicodeError, InvalidOffsetException):
+            except (UnicodeError, InvalidOffsetException, struct.error):
                 # These offsets are possibly not correct, so try the next configuration.
                 print("Failed to parse game DB using current inferred data version!")
                 pass
