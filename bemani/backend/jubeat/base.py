@@ -182,6 +182,7 @@ class JubeatBase(CoreHandler, CardManagerHandler, PASELIHandler, Base):
             # if this returns None anyway.
             scores = self.cache.get(cache_key) or []
 
+        rest: List[Score]
         if len(scores) < 50:
             # We simply return the whole amount for this, and cache nothing.
             rest = []
