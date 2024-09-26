@@ -1,6 +1,6 @@
 setuptools
 Cython
-SQLAlchemy<2.0.0
+SQLAlchemy
 alembic
 PyYAML
 Flask

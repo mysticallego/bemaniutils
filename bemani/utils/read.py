@@ -4,14 +4,14 @@ import csv
 import argparse
 import copy
 import io
-import jaconv  # type: ignore
+import jaconv
 import json
 import os
 import struct
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from sqlalchemy.engine import CursorResult  # type: ignore
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.engine import CursorResult
+from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy.sql import text
 from sqlalchemy.exc import IntegrityError
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -70,17 +70,18 @@ class ImportBase:
         self.update = update
         self.no_combine = no_combine
         self.__config = config
-        self.__engine = self.__config.database.engine
-        self.__sessionmanager = sessionmaker(self.__engine)
-        self.__conn = self.__engine.connect()
-        self.__session = self.__sessionmanager(bind=self.__conn)
         self.__batch = False
+
+        # Set up DB connection stuff.
+        self.__engine = self.__config.database.engine
+        session_factory = sessionmaker(self.__engine)
+        self.__conn = scoped_session(session_factory)
 
     def start_batch(self) -> None:
         self.__batch = True
 
     def finish_batch(self) -> None:
-        self.__session.commit()
+        self.__conn.commit()
         self.__batch = False
 
     def execute(self, sql: str, params: Optional[Dict[str, Any]] = None) -> CursorResult:
@@ -96,12 +97,12 @@ class ImportBase:
             ]:
                 if write_statement in sql.lower():
                     raise Exception("Read-only mode is active!")
-        return self.__session.execute(text(sql), params if params is not None else {})
+        return self.__conn.execute(text(sql), params if params is not None else {})
 
     def remote_music(self, server: str, token: str) -> GlobalMusicData:
         api = ReadAPI(server, token)
-        user = UserData(self.__config, self.__session)
-        music = MusicData(self.__config, self.__session)
+        user = UserData(self.__config, self.__conn)
+        music = MusicData(self.__config, self.__conn)
         return GlobalMusicData(api, user, music)
 
     def remote_game(self, server: str, token: str) -> GlobalGameData:
@@ -110,7 +111,7 @@ class ImportBase:
 
     def get_next_music_id(self) -> int:
         cursor = self.execute("SELECT MAX(id) AS next_id FROM `music`")
-        result = cursor.fetchone()
+        result = cursor.mappings().fetchone()  # type: ignore
         try:
             return result["next_id"] + 1
         except TypeError:
@@ -138,7 +139,7 @@ class ImportBase:
             },
         )
         if cursor.rowcount != 0:
-            result = cursor.fetchone()
+            result = cursor.mappings().fetchone()  # type: ignore
             return result["id"]
         else:
             return None
@@ -183,7 +184,7 @@ class ImportBase:
             },
         )
         if cursor.rowcount != 0:
-            result = cursor.fetchone()
+            result = cursor.mappings().fetchone()  # type: ignore
             return result["id"]
         else:
             return None
@@ -369,8 +370,6 @@ class ImportBase:
         # Make sure we don't leak connections after finising insertion.
         if self.__batch:
             raise Exception("Logic error, opened a batch without closing!")
-        if self.__session is not None:
-            self.__session.close()
         if self.__conn is not None:
             self.__conn.close()
             self.__conn = None

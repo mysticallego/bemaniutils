@@ -97,7 +97,6 @@ class Data:
         session_factory = sessionmaker(
             bind=config.database.engine,
             autoflush=True,
-            autocommit=True,
         )
         self.__config = config
         self.__session = scoped_session(session_factory)
