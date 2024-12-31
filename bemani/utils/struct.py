@@ -294,7 +294,7 @@ Ih&h = Decodes an array of structures containing an unsigned integer and two sho
         "--emulate-code",
         help=(
             "Hex offset pair of addresses where we should emulate x86/x64 code to "
-            "reconstuct a dynamic psmap structure, separated by a colon. This can "
+            "reconstuct a dynamic memory structure, separated by a colon. This can "
             "be specified as either a raw offset into the DLL or as a virtual offset. "
             "If multiple sections must be emulated you can specify this multiple times."
         ),
@@ -306,7 +306,7 @@ Ih&h = Decodes an array of structures containing an unsigned integer and two sho
         "--emulate-function",
         help=(
             "Hex offset address of a function that we should emulate to reconstruct a "
-            "dynamic psmap structure. This can be specified as either a raw offset into "
+            "dynamic memory structure. This can be specified as either a raw offset into "
             "the DLL or as a virtual offset. If multiple functions must be emulated you "
             "can specify this multiple times."
         ),
