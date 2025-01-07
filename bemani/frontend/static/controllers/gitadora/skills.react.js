@@ -103,6 +103,10 @@ var skills_view = createReactClass({
                                 render: function(entry) {return entry.chart},
                             },
                             {
+                                name: 'Level',
+                                render: function(entry) {return entry.music_difficulties / 100},
+                            },
+                            {
                                 name: 'Skill',
                                 render: function(entry) { return entry.skills_point / 100; },
                                     sort: function(a, b) {
@@ -148,6 +152,10 @@ var skills_view = createReactClass({
                             {
                                 name: 'Difficulty',
                                 render: function(entry) {return entry.chart},
+                            },
+                            {
+                                name: 'Level',
+                                render: function(entry) {return entry.music_difficulties / 100},
                             },
                             {
                                 name: 'Skill',
@@ -197,6 +205,10 @@ var skills_view = createReactClass({
                                 render: function(entry) {return entry.chart},
                             },
                             {
+                                name: 'Level',
+                                render: function(entry) {return entry.music_difficulties / 100},
+                            },
+                            {
                                 name: 'Skill',
                                 render: function(entry) { return entry.skills_point / 100; },
                                     sort: function(a, b) {
@@ -242,6 +254,10 @@ var skills_view = createReactClass({
                             {
                                 name: 'Difficulty',
                                 render: function(entry) {return entry.chart},
+                            },
+                            {
+                                name: 'Level',
+                                render: function(entry) {return entry.music_difficulties / 100},
                             },
                             {
                                 name: 'Skill',
