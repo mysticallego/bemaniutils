@@ -106,7 +106,7 @@ def main() -> None:
     register_games()
 
     if args.profile:
-        from werkzeug.contrib.profiler import ProfilerMiddleware
+        from werkzeug.middleware.profiler import ProfilerMiddleware
 
         app.wsgi_app = ProfilerMiddleware(app.wsgi_app, profile_dir=".")  # type: ignore
 
